@@ -19,8 +19,6 @@ class OfflineStorageService {
     required String currency,
     required String nature,
     String? notes,
-    String? categoryId,
-    String? categoryName,
     String? serverId,
     SyncStatus syncStatus = SyncStatus.pending,
   }) async {
@@ -37,8 +35,6 @@ class OfflineStorageService {
       currency: currency,
       nature: nature,
       notes: notes,
-      categoryId: categoryId,
-      categoryName: categoryName,
       syncStatus: syncStatus,
     );
 
@@ -242,8 +238,6 @@ class OfflineStorageService {
         currency: transaction.currency,
         nature: transaction.nature,
         notes: transaction.notes,
-        categoryId: transaction.categoryId ?? existing.categoryId,
-        categoryName: transaction.categoryName ?? existing.categoryName,
         syncStatus: SyncStatus.synced,
       );
       await _dbHelper.updateTransaction(existing.localId, updated.toDatabaseMap());
@@ -263,8 +257,6 @@ class OfflineStorageService {
         currency: transaction.currency,
         nature: transaction.nature,
         notes: transaction.notes,
-        categoryId: transaction.categoryId,
-        categoryName: transaction.categoryName,
         syncStatus: SyncStatus.synced,
       );
       await _dbHelper.insertTransaction(offlineTransaction.toDatabaseMap());

@@ -13,22 +13,6 @@ module Provider::LlmConcept
     raise NotImplementedError, "Subclasses must implement #auto_detect_merchants"
   end
 
-  EnhancedMerchant = Data.define(:merchant_id, :business_url)
-
-  def enhance_provider_merchants(merchants)
-    raise NotImplementedError, "Subclasses must implement #enhance_provider_merchants"
-  end
-
-  PdfProcessingResult = Data.define(:summary, :document_type, :extracted_data)
-
-  def supports_pdf_processing?
-    false
-  end
-
-  def process_pdf(pdf_content:, family: nil)
-    raise NotImplementedError, "Provider does not support PDF processing"
-  end
-
   ChatMessage = Data.define(:id, :output_text)
   ChatStreamChunk = Data.define(:type, :data, :usage)
   ChatResponse = Data.define(:id, :model, :messages, :function_requests)
@@ -40,7 +24,6 @@ module Provider::LlmConcept
     instructions: nil,
     functions: [],
     function_results: [],
-    messages: nil,
     streamer: nil,
     previous_response_id: nil,
     session_id: nil,

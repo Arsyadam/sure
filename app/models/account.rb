@@ -1,19 +1,20 @@
 class Account < ApplicationRecord
   include AASM, Syncable, Monetizable, Chartable, Linkable, Enrichable, Anchorable, Reconcileable, TaxTreatable
 
-  before_validation :assign_default_owner, if: -> { owner_id.blank? }
-  before_destroy :capture_account_statement_ids_to_move
-  after_destroy_commit :move_account_statements_to_inbox
-
   validates :name, :balance, :currency, presence: true
-  validate :owner_belongs_to_family, if: -> { owner_id.present? && family_id.present? }
+  validates :account_number_last4,
+            format: { with: /\A\d{4}\z/, message: "must be exactly 4 digits" },
+            allow_blank: true
+
+  before_validation :normalize_account_number_last4
+  before_validation :normalize_institution_domain
 
   belongs_to :family
-  belongs_to :owner, class_name: "User", optional: true
   belongs_to :import, optional: true
+  belongs_to :mail_bank_format, optional: true
 
-  has_many :account_shares, dependent: :destroy
-  has_many :shared_users, through: :account_shares, source: :user
+  validate :mail_bank_format_matches_account_type
+
   has_many :import_mappings, as: :mappable, dependent: :destroy, class_name: "Import::Mapping"
   has_many :entries, dependent: :destroy
   has_many :transactions, through: :entries, source: :entryable, source_type: "Transaction"
@@ -21,15 +22,6 @@ class Account < ApplicationRecord
   has_many :trades, through: :entries, source: :entryable, source_type: "Trade"
   has_many :holdings, dependent: :destroy
   has_many :balances, dependent: :destroy
-  has_many :recurring_transactions, dependent: :destroy
-  # Inverse for recurring transfers where this account is the destination.
-  # Account#recurring_transactions only matches account_id; without this
-  # association, destroying the destination account would hit the FK
-  # cascade silently and the AR cache wouldn't reflect the deletion.
-  has_many :inbound_recurring_transfers,
-           class_name: "RecurringTransaction",
-           foreign_key: :destination_account_id,
-           dependent: :destroy
 
   monetize :balance, :cash_balance
 
@@ -53,34 +45,7 @@ class Account < ApplicationRecord
     manual.where.not(status: :pending_deletion)
   }
 
-  # All accounts a user can access (owned + shared with them)
-  scope :accessible_by, ->(user) {
-    left_joins(:account_shares)
-      .where("accounts.owner_id = :uid OR account_shares.user_id = :uid", uid: user.id)
-      .distinct
-  }
-
-  # Accounts a user can write to (owned or shared with full_control)
-  scope :writable_by, ->(user) {
-    left_joins(:account_shares)
-      .where("accounts.owner_id = :uid OR (account_shares.user_id = :uid AND account_shares.permission = 'full_control')", uid: user.id)
-      .distinct
-  }
-
-  # Accounts that count in a user's financial calculations
-  scope :included_in_finances_for, ->(user) {
-    left_joins(:account_shares)
-      .where(
-        "accounts.owner_id = :uid OR " \
-        "(account_shares.user_id = :uid AND account_shares.include_in_finances = true)",
-        uid: user.id
-      )
-      .distinct
-  }
-
-  has_one_attached :logo, dependent: :purge_later
-  # No dependent: option; before_destroy captures IDs, after_destroy_commit moves statements back to inbox.
-  has_many :account_statements
+  has_one_attached :logo
 
   delegated_type :accountable, types: Accountable::TYPES, dependent: :destroy
   delegate :subtype, to: :accountable, allow_nil: true
@@ -118,12 +83,7 @@ class Account < ApplicationRecord
   end
 
   class << self
-    def human_attribute_name(attribute, options = {})
-      options = { moniker: Current.family&.moniker_label || "Family" }.merge(options)
-      super(attribute, options)
-    end
-
-    def create_and_sync(attributes, skip_initial_sync: false, opening_balance_date: nil)
+    def create_and_sync(attributes, skip_initial_sync: false)
       attributes[:accountable_attributes] ||= {} # Ensure accountable is created, even if empty
       # Default cash_balance to balance unless explicitly provided (e.g., Crypto sets it to 0)
       attrs = attributes.dup
@@ -135,13 +95,8 @@ class Account < ApplicationRecord
         account.save!
 
         manager = Account::OpeningBalanceManager.new(account)
-        result = manager.set_opening_balance(
-          balance: initial_balance || account.balance,
-          date: opening_balance_date
-        )
+        result = manager.set_opening_balance(balance: initial_balance || account.balance)
         raise result.error if result.error
-
-        account.auto_share_with_family! if account.family.share_all_by_default?
       end
 
       # Skip initial sync for linked accounts - the provider sync will handle balance creation
@@ -184,9 +139,8 @@ class Account < ApplicationRecord
         end
       end
 
-      family = simplefin_account.simplefin_item.family
       attributes = {
-        family: family,
+        family: simplefin_account.simplefin_item.family,
         name: simplefin_account.name,
         balance: balance,
         cash_balance: cash_balance,
@@ -212,9 +166,8 @@ class Account < ApplicationRecord
 
       cash_balance = balance
 
-      family = enable_banking_account.enable_banking_item.family
       attributes = {
-        family: family,
+        family: enable_banking_account.enable_banking_item.family,
         name: enable_banking_account.name,
         balance: balance,
         cash_balance: cash_balance,
@@ -259,55 +212,8 @@ class Account < ApplicationRecord
       create_and_sync(attributes, skip_initial_sync: true)
     end
 
-    def create_from_binance_account(binance_account)
-      create_from_crypto_exchange_account(binance_account, family: binance_account.binance_item.family)
-    end
-
-    def create_from_ibkr_account(ibkr_account)
-      family = ibkr_account.ibkr_item.family
-      default_name = if ibkr_account.ibkr_account_id.present?
-        "Interactive Brokers (#{ibkr_account.ibkr_account_id})"
-      else
-        "Interactive Brokers"
-      end
-
-      attributes = {
-        family: family,
-        name: default_name,
-        balance: 0,
-        cash_balance: 0,
-        currency: ibkr_account.currency.presence || family.currency,
-        accountable_type: "Investment",
-        accountable_attributes: {
-          subtype: "brokerage"
-        }
-      }
-
-      create_and_sync(attributes, skip_initial_sync: true)
-    end
-
-    def create_from_kraken_account(kraken_account)
-      create_from_crypto_exchange_account(kraken_account, family: kraken_account.kraken_item.family)
-    end
 
     private
-
-      def create_from_crypto_exchange_account(provider_account, family:)
-        attributes = {
-          family: family,
-          name: provider_account.name,
-          balance: (provider_account.current_balance || 0).to_d,
-          cash_balance: 0,
-          currency: provider_account.currency.presence || family.currency,
-          accountable_type: "Crypto",
-          accountable_attributes: {
-            subtype: "exchange",
-            tax_treatment: "taxable"
-          }
-        }
-
-        create_and_sync(attributes, skip_initial_sync: true)
-      end
 
       def build_simplefin_accountable_attributes(simplefin_account, account_type, subtype)
         attributes = {}
@@ -330,6 +236,10 @@ class Account < ApplicationRecord
       end
   end
 
+  def display_account_mask
+    account_number_last4.present? ? "••••#{account_number_last4}" : nil
+  end
+
   def institution_name
     read_attribute(:institution_name).presence || provider&.institution_name
   end
@@ -338,31 +248,51 @@ class Account < ApplicationRecord
     read_attribute(:institution_domain).presence || provider&.institution_domain
   end
 
-  def manual_crypto_exchange?
-    accountable_type == "Crypto" &&
-      accountable&.subtype == "exchange" &&
-      account_providers.none? &&
-      plaid_account_id.blank? &&
-      simplefin_account_id.blank?
+  def normalized_institution_domain
+    self.class.normalize_domain(institution_domain)
+  end
+
+  def institution_favicon_url
+    domain = normalized_institution_domain
+    return unless domain
+
+    "https://www.google.com/s2/favicons?domain=#{ERB::Util.url_encode(domain)}&sz=128"
+  end
+
+  def brand_fetch_institution_logo_url
+    domain = normalized_institution_domain
+    return unless domain && Setting.brand_fetch_client_id.present?
+
+    size = Setting.brand_fetch_logo_size
+    "https://cdn.brandfetch.io/#{domain}/icon/w/#{size}/h/#{size}?c=#{Setting.brand_fetch_client_id}"
+  end
+
+  def resolved_institution_logo_url
+    domain = normalized_institution_domain
+    return unless domain
+
+    # Local bank domains — Brandfetch often has no logo and returns a lettermark instead.
+    if mail_bank_format_id.present? || domain.end_with?(".co.id")
+      institution_favicon_url
+    else
+      brand_fetch_institution_logo_url || institution_favicon_url
+    end
   end
 
   def logo_url
-    if institution_domain.present? && Setting.brand_fetch_client_id.present?
-      logo_size = Setting.brand_fetch_logo_size
+    provider&.logo_url
+  end
 
-      "https://cdn.brandfetch.io/#{institution_domain}/icon/fallback/lettermark/w/#{logo_size}/h/#{logo_size}?c=#{Setting.brand_fetch_client_id}"
-    elsif provider&.logo_url.present?
-      provider.logo_url
-    elsif logo.attached?
-      Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true)
-    end
+  def self.normalize_domain(value)
+    value.to_s.strip
+      .sub(/\Ahttps?:\/\//i, "")
+      .sub(/\Awww\./i, "")
+      .split("/").first.presence
   end
 
   def destroy_later
-    transaction do
-      mark_for_deletion!
-      DestroyJob.perform_later(self)
-    end
+    mark_for_deletion!
+    DestroyJob.perform_later(self)
   end
 
   # Override destroy to handle error recovery for accounts
@@ -376,27 +306,15 @@ class Account < ApplicationRecord
   end
 
   def current_holdings
-    if (provider_snapshot_date = latest_provider_holdings_snapshot_date)
-      holdings
-        .where.not(account_provider_id: nil)
-        .where(date: provider_snapshot_date)
-        .where.not(qty: 0)
-        .order(amount: :desc)
-    else
-      holdings
-        .where(currency: currency)
-        .where.not(qty: 0)
-        .where(
-          id: holdings.select("DISTINCT ON (security_id) id")
-                      .where(currency: currency)
-                      .order(:security_id, date: :desc)
-        )
-        .order(amount: :desc)
-    end
-  end
-
-  def latest_provider_holdings_snapshot_date
-    holdings.where.not(account_provider_id: nil).maximum(:date)
+    holdings
+      .where(currency: currency)
+      .where.not(qty: 0)
+      .where(
+        id: holdings.select("DISTINCT ON (security_id) id")
+                    .where(currency: currency)
+                    .order(:security_id, date: :desc)
+      )
+      .order(amount: :desc)
   end
 
   def start_date
@@ -427,27 +345,12 @@ class Account < ApplicationRecord
     accountable_class.long_subtype_label_for(subtype) || accountable_class.display_name
   end
 
-  def supports_default?
-    depository? || credit_card?
-  end
-
-  def eligible_for_transaction_default?
-    supports_default? && active? && !linked?
-  end
-
   # Determines if this account supports manual trade entry
   # Investment accounts always support trades; Crypto only if subtype is "exchange"
   def supports_trades?
     return true if investment?
     return accountable.supports_trades? if crypto? && accountable.respond_to?(:supports_trades?)
     false
-  end
-
-  def traded_standard_securities
-    Security.where(id: holdings.select(:security_id))
-            .standard
-            .distinct
-            .order(:ticker)
   end
 
   # The balance type determines which "component" of balance is being tracked.
@@ -469,78 +372,26 @@ class Account < ApplicationRecord
     end
   end
 
-  def owned_by?(user)
-    user.present? && owner_id == user.id
-  end
-
-  def shared_with?(user)
-    return false if user.nil?
-
-    owned_by?(user) ||
-      if account_shares.loaded?
-        account_shares.any? { |s| s.user_id == user.id }
-      else
-        account_shares.exists?(user: user)
-      end
-  end
-
-  def shared?
-    account_shares.any?
-  end
-
-  def permission_for(user)
-    return :owner if owned_by?(user)
-    account_shares.find_by(user: user)&.permission&.to_sym
-  end
-
-  def share_with!(user, permission: "read_only", include_in_finances: true)
-    account_shares.create!(user: user, permission: permission, include_in_finances: include_in_finances)
-  end
-
-  def unshare_with!(user)
-    account_shares.where(user: user).destroy_all
-  end
-
-  def auto_share_with_family!
-    records = family.users.where.not(id: owner_id).pluck(:id).map do |user_id|
-      { account_id: id, user_id: user_id, permission: "read_write",
-        include_in_finances: true, created_at: Time.current, updated_at: Time.current }
-    end
-
-    AccountShare.insert_all(records, unique_by: %i[account_id user_id]) if records.any?
-  end
-
   private
 
-    def assign_default_owner
-      return if owner.present?
+    def normalize_account_number_last4
+      return if account_number_last4.blank?
 
-      if Current.user.present? && Current.user.family_id == family_id
-        self.owner = Current.user
-      else
-        self.owner = family&.users&.find_by(role: %w[admin super_admin]) || family&.users&.order(:created_at)&.first
-      end
+      digits = account_number_last4.to_s.gsub(/\D/, "")
+      self.account_number_last4 = digits.length > 4 ? digits.last(4) : digits.presence
     end
 
-    def owner_belongs_to_family
-      return if User.where(id: owner_id, family_id: family_id).exists?
-      errors.add(:owner, :invalid, message: "must belong to the same family as the account")
+    def normalize_institution_domain
+      raw = read_attribute(:institution_domain)
+      return if raw.blank?
+
+      write_attribute(:institution_domain, self.class.normalize_domain(raw))
     end
 
-    def capture_account_statement_ids_to_move
-      @statement_ids_to_move = account_statements.ids
-    end
+    def mail_bank_format_matches_account_type
+      return if mail_bank_format.blank? || accountable_type.blank?
+      return if mail_bank_format.required_account_type == accountable_type
 
-    def move_account_statements_to_inbox
-      statement_ids = Array(@statement_ids_to_move).compact
-      return if statement_ids.empty?
-
-      # Bypass callbacks deliberately: the account was destroyed, so linked statements need a direct inbox move.
-      AccountStatement.where(id: statement_ids).update_all(
-        account_id: nil,
-        review_status: "unmatched",
-        match_confidence: nil,
-        updated_at: Time.current
-      )
+      errors.add(:mail_bank_format, "must match this account type")
     end
 end

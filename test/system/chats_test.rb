@@ -32,23 +32,17 @@ class ChatsTest < ApplicationSystemTestCase
   test "sidebar shows last viewed chat" do
     with_env_overrides OPENAI_ACCESS_TOKEN: "test-token" do
       @user.update!(ai_enabled: true)
-      chat_title = @user.chats.first.title
 
       visit root_url
 
-      click_on chat_title
-
-      # Wait for the chat to actually load before refreshing
-      within "#chat-container" do
-        assert_selector "h1", text: chat_title
-      end
+      click_on @user.chats.first.title
 
       # Page refresh
       visit root_url
 
       # After page refresh, we're still on the last chat we were viewing
       within "#chat-container" do
-        assert_selector "h1", text: chat_title
+        assert_selector "h1", text: @user.chats.first.title
       end
     end
   end

@@ -23,13 +23,12 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
           backgroundColor: Colors.orange,
         ),
       );
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-        });
-      }
       return;
     }
+
+    setState(() {
+      _isSyncing = true;
+    });
 
     try {
       await transactionsProvider.syncTransactions(accessToken: accessToken);
@@ -102,37 +101,11 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
                       return TextButton(
                         onPressed: _isSyncing
                             ? null
-                            : () async {
-                                setState(() {
-                                  _isSyncing = true;
-                                });
-
-                                String? accessToken;
-                                try {
-                                  accessToken = await authProvider.getValidAccessToken();
-                                } catch (e) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Unable to authenticate. Please try again.'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                  if (mounted) {
-                                    setState(() {
-                                      _isSyncing = false;
-                                    });
-                                  }
-                                  return;
-                                }
-
-                                if (!context.mounted) return;
-                                await _handleSync(
+                            : () => _handleSync(
                                   context,
-                                  accessToken,
+                                  authProvider.tokens?.accessToken,
                                   transactionsProvider,
-                                );
-                              },
+                                ),
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.blue.shade900,
                         ),

@@ -9,11 +9,10 @@ module Holding::Gapfillable
         next if security_holdings.empty?
 
         sorted = security_holdings.sort_by(&:date)
-        holdings_by_date = security_holdings.index_by(&:date)
         previous_holding = sorted.first
 
         sorted.first.date.upto(Date.current) do |date|
-          holding = holdings_by_date[date]
+          holding = security_holdings.find { |h| h.date == date }
 
           if holding
             filled_holdings << holding

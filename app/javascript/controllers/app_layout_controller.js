@@ -21,27 +21,22 @@ export default class extends Controller {
   toggleLeftSidebar() {
     const isOpen = this.leftSidebarTarget.classList.contains("w-full");
     this.#updateUserPreference("show_sidebar", !isOpen);
-    this.#toggleSidebarWidth(this.leftSidebarTarget, isOpen, "left");
+    this.#toggleSidebarWidth(this.leftSidebarTarget, isOpen);
   }
 
   toggleRightSidebar() {
     const isOpen = this.rightSidebarTarget.classList.contains("w-full");
     this.#updateUserPreference("show_ai_sidebar", !isOpen);
-    this.#toggleSidebarWidth(this.rightSidebarTarget, isOpen, "right");
+    this.#toggleSidebarWidth(this.rightSidebarTarget, isOpen);
   }
 
-  #toggleSidebarWidth(el, isCurrentlyOpen, side) {
-    const expandedClasses = side === "left" ? [...this.expandedSidebarClasses, "border-r"] : [...this.expandedSidebarClasses, "border-l"];
-    const collapsedClasses = side === "left" ? [...this.collapsedSidebarClasses, "border-r-0"] : [...this.collapsedSidebarClasses, "border-l-0"];
-
+  #toggleSidebarWidth(el, isCurrentlyOpen) {
     if (isCurrentlyOpen) {
-      el.classList.remove(...expandedClasses);
-      el.classList.add(...collapsedClasses);
-      el.inert = true;
+      el.classList.remove(...this.expandedSidebarClasses);
+      el.classList.add(...this.collapsedSidebarClasses);
     } else {
-      el.classList.add(...expandedClasses);
-      el.classList.remove(...collapsedClasses);
-      el.inert = false;
+      el.classList.add(...this.expandedSidebarClasses);
+      el.classList.remove(...this.collapsedSidebarClasses);
     }
   }
 

@@ -10,32 +10,26 @@ class RecurringTransaction
     def identify_recurring_patterns
       three_months_ago = 3.months.ago.to_date
 
-      # Skip transfer-kind transactions: they're one half of a Transfer pair, so grouping them
-      # under their single account would produce incoherent recurring "patterns" that don't
-      # represent the underlying account-pair flow. Recurring transfers are tracked on a
-      # different shape (RecurringTransaction with destination_account_id). Filtering at the
-      # SQL level avoids loading and discarding transfer entries for a busy family.
+      # Get all transactions from the last 3 months
       entries_with_transactions = family.entries
-        .joins("INNER JOIN transactions ON transactions.id = entries.entryable_id")
         .where(entryable_type: "Transaction")
         .where("entries.date >= ?", three_months_ago)
-        .where.not("transactions.kind": Transaction::TRANSFER_KINDS)
         .includes(:entryable)
         .to_a
 
-      # Group by merchant (if present) or name, along with amount (preserve sign) and currency.
+      # Group by merchant (if present) or name, along with amount (preserve sign) and currency
       grouped_transactions = entries_with_transactions
         .select { |entry| entry.entryable.is_a?(Transaction) }
         .group_by do |entry|
           transaction = entry.entryable
           # Use merchant_id if present, otherwise use entry name
           identifier = transaction.merchant_id.present? ? [ :merchant, transaction.merchant_id ] : [ :name, entry.name ]
-          [ identifier, entry.amount.round(2), entry.currency, entry.account_id ]
+          [ identifier, entry.amount.round(2), entry.currency ]
         end
 
       recurring_patterns = []
 
-      grouped_transactions.each do |(identifier, amount, currency, account_id), entries|
+      grouped_transactions.each do |(identifier, amount, currency), entries|
         next if entries.size < 3  # Must have at least 3 occurrences
 
         # Check if the last occurrence was within the last 45 days
@@ -55,7 +49,6 @@ class RecurringTransaction
           pattern = {
             amount: amount,
             currency: currency,
-            account_id: account_id,
             expected_day_of_month: expected_day,
             last_occurrence_date: last_occurrence.date,
             occurrence_count: entries.size,
@@ -77,8 +70,7 @@ class RecurringTransaction
         # Build find conditions based on whether it's merchant-based or name-based
         find_conditions = {
           amount: pattern[:amount],
-          currency: pattern[:currency],
-          account_id: pattern[:account_id]
+          currency: pattern[:currency]
         }
 
         if pattern[:merchant_id].present?
@@ -146,17 +138,9 @@ class RecurringTransaction
       recurring_patterns.size
     end
 
-    # Update variance for existing manual recurring transactions.
-    #
-    # Transfer rows (destination_account_id present) are skipped: their
-    # variance / occurrence tracking would need pair-detection across
-    # both endpoints rather than the single-account name/merchant match
-    # the helper performs. Issue #1590 tracks the proper Cleaner-aware
-    # matching for recurring transfers.
+    # Update variance for existing manual recurring transactions
     def update_manual_recurring_transactions(since_date)
-      family.recurring_transactions
-            .where(manual: true, status: "active", destination_account_id: nil)
-            .find_each do |recurring|
+      family.recurring_transactions.where(manual: true, status: "active").find_each do |recurring|
         # Find matching transactions in the recent period
         matching_entries = RecurringTransaction.find_matching_transaction_entries(
           family: family,
@@ -164,8 +148,7 @@ class RecurringTransaction
           name: recurring.name,
           currency: recurring.currency,
           expected_day: recurring.expected_day_of_month,
-          lookback_months: 6,
-          account: recurring.account
+          lookback_months: 6
         )
 
         next if matching_entries.empty?
@@ -197,8 +180,7 @@ class RecurringTransaction
           name: recurring_transaction.name,
           currency: recurring_transaction.currency,
           expected_day: recurring_transaction.expected_day_of_month,
-          lookback_months: 6,
-          account: recurring_transaction.account
+          lookback_months: 6
         )
 
         # Update if we have any matching transactions

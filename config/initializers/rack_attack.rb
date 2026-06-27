@@ -1,21 +1,12 @@
 # frozen_string_literal: true
 
 class Rack::Attack
-  # Enable Rack::Attack only in production and staging (disable in test/development to avoid rate-limit flakiness)
+  # Enable Rack::Attack
   enabled = Rails.env.production? || Rails.env.staging?
-  self.enabled = enabled
 
   # Throttle requests to the OAuth token endpoint
   throttle("oauth/token", limit: 10, period: 1.minute) do |request|
     request.ip if request.path == "/oauth/token"
-  end
-
-  # Throttle unauthenticated WebAuthn MFA ceremonies similarly to sign-in
-  # endpoints; registration remains behind normal application authentication.
-  throttle("mfa/webauthn", limit: 10, period: 1.minute) do |request|
-    if request.post? && request.path.in?(%w[/mfa/webauthn_options /mfa/verify_webauthn])
-      request.ip
-    end
   end
 
   # Throttle admin endpoints to prevent brute-force attacks

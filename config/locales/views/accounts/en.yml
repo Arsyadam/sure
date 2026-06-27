@@ -1,48 +1,38 @@
 ---
 en:
-  account:
-    entries:
-      destroy:
-        success: "Entry deleted successfully."
   accounts:
-    not_authorized: "You don't have permission to manage this account"
     account:
-      complete_setup: Complete setup
-      edit: Edit
       link_lunchflow: Link with Lunch Flow
       link_provider: Link with provider
       unlink_provider: Unlink from provider
-      change_simplefin_account: Change SimpleFIN account
       troubleshoot: Troubleshoot
-      enable: Enable account
-      disable: Disable account
-      set_default: Set as default
-      remove_default: Unset default
-      default_label: Default
-      delete: Delete account
-      sharing: Sharing
     chart:
       data_not_available: Data not available for the selected period
     create:
       success: "%{type} account created"
-    set_default:
-      depository_only: "Only cash and credit card accounts can be set as default."
     destroy:
       success: "%{type} account scheduled for deletion"
       cannot_delete_linked: "Cannot delete a linked account. Please unlink it first."
-      failed: "Resource deletion failed. Try again later."
     empty:
       empty_message: Add an account either via connection, importing or entering manually.
       new_account: New account
       no_accounts: No accounts yet
     form:
-      balance: "Balance on date:"
-      opening_balance_date_label: Opening balance date
+      balance: Current balance
       name_label: Account name
       name_placeholder: Example account name
       additional_details: Additional details
       institution_name_label: Institution name
       institution_name_placeholder: e.g., Chase Bank
+      mail_bank_format_label: Bank notification source
+      mail_bank_format_blank: Select bank email source
+      mail_bank_format_help: "Notifications from this bank in your Gmail inbox (%{gmail}) will post to this account when Bank Sync is enabled."
+      connect_bank_link: Connect a bank
+      connect_bank_first: "Gmail (%{gmail}) is connected, but no banks are enabled yet. Connect a bank in Bank Sync first to choose a notification source."
+      institution_domain_logo_help: Used to show the bank logo (favicon from the bank website, e.g. cimbniaga.co.id).
+      account_number_last4_label: Last 4 digits of account or card
+      account_number_last4_placeholder: "6196"
+      account_number_last4_help: Used with the source above to match the right account when several exist at the same bank (e.g. ****6196).
       institution_domain_label: Institution domain
       institution_domain_placeholder: e.g., chase.com
       notes_label: Notes
@@ -57,10 +47,6 @@ en:
       syncing: "Syncing accounts..."
     new:
       import_accounts: Import accounts
-      container:
-        select: Select
-        navigate: Navigate
-        close: Close
       method_selector:
         connected_entry: Link account
         connected_entry_eu: Link EU account
@@ -70,12 +56,6 @@ en:
         title: How would you like to add it?
       title: What would you like to add?
     show:
-      limited_fx_history_warning: "Exchange rate history is only available from %{date} onwards. Transactions before this date use approximate currency conversions — this can happen when the FX provider only offers a limited historical window."
-      tabs:
-        activity: Activity
-        holdings: Holdings
-        overview: Overview
-        statements: Statements
       activity:
         amount: Amount
         balance: Balance
@@ -94,14 +74,11 @@ en:
         pending: Pending
         search:
           placeholder: Search entries by name
-        search_placeholder: Search entries by name
         status: Status
         title: Activity
       chart:
         balance: Balance
         owed: Amount owed
-      header:
-        complete_setup: Complete setup
       menu:
         confirm_accept: Delete "%{name}"
         confirm_body_html: "<p>By deleting this account, you will erase its value
@@ -110,14 +87,11 @@ en:
           graphs.</p><br /> <p>After deletion, there is no way you'll be able to restore
           the account information because you'll need to add it as a new account.</p>"
         confirm_title: Delete account?
-        delete_account: Delete account
         edit: Edit
         import: Import transactions
         import_trades: Import trades
         import_transactions: Import transactions
         manage: Manage accounts
-        sharing: Sharing
-        statements: Statements
     update:
       success: "%{type} account updated"
     sidebar:
@@ -142,16 +116,6 @@ en:
       credit_card: Credit Card
       loan: Loan
       other_liability: Other Liability
-    types_plural:
-      depository: Cash
-      investment: Investments
-      crypto: Crypto
-      property: Properties
-      vehicle: Vehicles
-      other_asset: Other Assets
-      credit_card: Credit Cards
-      loan: Loans
-      other_liability: Other Liabilities
     tax_treatments:
       taxable: Taxable
       tax_deferred: Tax-Deferred
@@ -168,7 +132,6 @@ en:
       ca: Canada
       au: Australia
       eu: Europe
-      in: India
       generic: General
     confirm_unlink:
       title: Unlink account from provider?

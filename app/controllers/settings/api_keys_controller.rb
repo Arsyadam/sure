@@ -7,8 +7,8 @@ class Settings::ApiKeysController < ApplicationController
 
   def show
     @breadcrumbs = [
-      [ t("breadcrumbs.home"), root_path ],
-      [ t("breadcrumbs.api_key"), nil ]
+      [ "Home", root_path ],
+      [ "API Key", nil ]
     ]
     @current_api_key = @api_key
   end
@@ -16,7 +16,7 @@ class Settings::ApiKeysController < ApplicationController
   def new
     # Allow regeneration by not redirecting if user explicitly wants to create a new key
     # Only redirect if user stumbles onto new page without explicit intent
-    redirect_to settings_api_key_path if Current.user.api_keys.active.visible.exists? && !params[:regenerate]
+    redirect_to settings_api_key_path if Current.user.api_keys.active.exists? && !params[:regenerate]
     @api_key = ApiKey.new
   end
 
@@ -25,13 +25,12 @@ class Settings::ApiKeysController < ApplicationController
     @api_key = Current.user.api_keys.build(api_key_params)
     @api_key.key = @plain_key
 
-    # Temporarily revoke existing visible keys for validation to pass
-    # (demo monitoring key is excluded and remains active)
-    existing_keys = Current.user.api_keys.active.visible
+    # Temporarily revoke existing keys for validation to pass
+    existing_keys = Current.user.api_keys.active
     existing_keys.each { |key| key.update_column(:revoked_at, Time.current) }
 
     if @api_key.save
-      flash[:notice] = t(".success")
+      flash[:notice] = "Your API key has been created successfully"
       redirect_to settings_api_key_path
     else
       # Restore existing keys if new key creation failed
@@ -41,14 +40,10 @@ class Settings::ApiKeysController < ApplicationController
   end
 
   def destroy
-    if @api_key.nil?
-      flash[:alert] = t(".not_found")
-    elsif @api_key.demo_monitoring_key?
-      flash[:alert] = t(".cannot_revoke")
-    elsif @api_key.revoke!
-      flash[:notice] = t(".revoked_successfully")
+    if @api_key&.revoke!
+      flash[:notice] = "API key has been revoked successfully"
     else
-      flash[:alert] = t(".revoke_failed")
+      flash[:alert] = "Failed to revoke API key"
     end
     redirect_to settings_api_key_path
   end
@@ -56,7 +51,7 @@ class Settings::ApiKeysController < ApplicationController
   private
 
     def set_api_key
-      @api_key = Current.user.api_keys.active.visible.first
+      @api_key = Current.user.api_keys.active.first
     end
 
     def api_key_params

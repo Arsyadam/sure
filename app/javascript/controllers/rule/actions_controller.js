@@ -11,9 +11,6 @@ export default class extends Controller {
   ];
 
   remove(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
     if (e.params.destroy) {
       this.destroyFieldTarget.value = true;
       this.element.classList.add("hidden");

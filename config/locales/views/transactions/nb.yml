@@ -46,8 +46,6 @@ nb:
       edit_merchants: Rediger selgere
       edit_tags: Rediger tagger
       import: Importer
-    transaction:
-      linked_with_provider: Koblet med %{provider}
     index:
       transaction: transaksjon
       transactions: transaksjoner

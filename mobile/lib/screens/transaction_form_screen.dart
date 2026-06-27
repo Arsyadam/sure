@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/account.dart';
-import '../models/category.dart' as models;
 import '../providers/auth_provider.dart';
-import '../providers/categories_provider.dart';
 import '../providers/transactions_provider.dart';
 import '../services/log_service.dart';
 import '../services/connectivity_service.dart';
@@ -31,7 +29,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   String _nature = 'expense';
   bool _showMoreFields = false;
   bool _isSubmitting = false;
-  models.Category? _selectedCategory;
 
   @override
   void initState() {
@@ -41,16 +38,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     final formattedDate = DateFormat('yyyy/MM/dd').format(now);
     _dateController.text = formattedDate;
     _nameController.text = 'SureApp';
-    _fetchCategories();
-  }
-
-  Future<void> _fetchCategories() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final categoriesProvider = Provider.of<CategoriesProvider>(context, listen: false);
-    final accessToken = await authProvider.getValidAccessToken();
-    if (accessToken != null) {
-      categoriesProvider.fetchCategories(accessToken: accessToken);
-    }
   }
 
   @override
@@ -139,8 +126,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         currency: widget.account.currency,
         nature: _nature,
         notes: 'This transaction via mobile app.',
-        categoryId: _selectedCategory?.id,
-        categoryName: _selectedCategory?.name,
       );
 
       if (mounted) {
@@ -373,56 +358,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                               prefixIcon: Icon(Icons.label),
                               helperText: 'Optional (default: SureApp)',
                             ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Category picker
-                          Consumer<CategoriesProvider>(
-                            builder: (context, categoriesProvider, _) {
-                              if (categoriesProvider.isLoading) {
-                                return const InputDecorator(
-                                  decoration: InputDecoration(
-                                    labelText: 'Category',
-                                    prefixIcon: Icon(Icons.category),
-                                  ),
-                                  child: Text('Loading categories...'),
-                                );
-                              }
-
-                              final categories = categoriesProvider.categories;
-
-                              return DropdownButtonFormField<String?>(
-                                value: _selectedCategory?.id,
-                                decoration: const InputDecoration(
-                                  labelText: 'Category',
-                                  prefixIcon: Icon(Icons.category),
-                                  helperText: 'Optional',
-                                ),
-                                isExpanded: true,
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('No category'),
-                                  ),
-                                  ...categories.map((category) {
-                                    return DropdownMenuItem<String?>(
-                                      value: category.id,
-                                      child: Text(category.displayName),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (value) {
-                                  setState(() {
-                                    if (value == null) {
-                                      _selectedCategory = null;
-                                    } else {
-                                      _selectedCategory = categories
-                                          .firstWhere((c) => c.id == value);
-                                    }
-                                  });
-                                },
-                              );
-                            },
                           ),
                         ],
 

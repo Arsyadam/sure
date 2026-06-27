@@ -6,8 +6,7 @@ class TooltipComponentPreview < ViewComponent::Preview
   # @param icon text
   # @param size select [xs, sm, md, lg, xl, 2xl]
   # @param color select [default, white, success, warning, destructive, current]
-  # @param as select [button, span]
-  def default(text: "This is helpful information", placement: "top", offset: 10, cross_axis: 0, icon: "info", size: "sm", color: "default", as: "button")
+  def default(text: "This is helpful information", placement: "top", offset: 10, cross_axis: 0, icon: "info", size: "sm", color: "default")
     render DS::Tooltip.new(
       text: text,
       placement: placement,
@@ -15,8 +14,7 @@ class TooltipComponentPreview < ViewComponent::Preview
       cross_axis: cross_axis,
       icon: icon,
       size: size,
-      color: color,
-      as: as.to_sym
+      color: color
     )
   end
 

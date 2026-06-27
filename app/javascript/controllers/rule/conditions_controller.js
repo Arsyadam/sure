@@ -26,9 +26,6 @@ export default class extends Controller {
   }
 
   remove(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
     // Find the parent rules controller before removing the condition
     const rulesEl = this.element.closest('[data-controller~="rules"]');
 

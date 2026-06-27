@@ -16,4 +16,3 @@ tr:
       title: Hesabınıza giriş yapın
       password_placeholder: Şifrenizi girin
       openid_connect: OpenID Connect ile giriş yap
-      oidc: OpenID Connect ile giriş yap

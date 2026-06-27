@@ -1,0 +1,80 @@
+<%= render DS::Dialog.new do |dialog| %>
+  <% dialog.with_header(title: t("settings.bank_sync.links.pick_bank_title")) %>
+  <% dialog.with_body do %>
+    <div class="mb-4 p-3 rounded-lg bg-container-inset border border-primary">
+      <p class="text-xs text-secondary uppercase tracking-wide"><%= t("settings.bank_sync.gmail_inbox") %></p>
+      <p class="text-primary font-medium truncate flex items-center gap-2 mt-1">
+        <%= icon "mail", size: "sm", class: "text-subdued shrink-0" %>
+        <%= @connection.gmail_email %>
+      </p>
+      <p class="text-secondary text-xs mt-2"><%= t("settings.bank_sync.links.gmail_inbox_hint") %></p>
+    </div>
+
+    <p class="text-secondary text-sm mb-4"><%= t("settings.bank_sync.links.pick_bank_hint") %></p>
+
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <% [
+        [ nil, t("settings.bank_sync.links.filter_all") ],
+        [ "debit", t("settings.bank_sync.links.filter_debit") ],
+        [ "credit", t("settings.bank_sync.links.filter_credit") ],
+        [ "ewallet", t("settings.bank_sync.links.filter_ewallet") ]
+      ].each do |value, label| %>
+        <%= link_to label,
+                    new_settings_bank_sync_link_path(card_type: value),
+                    class: "px-3 py-1.5 text-xs font-medium rounded-full border #{@card_type_filter == value || (value.nil? && @card_type_filter.blank?) ? 'bg-inverse text-inverse border-inverse' : 'border-primary text-secondary hover:bg-container-inset'}",
+                    data: { turbo_frame: "modal" } %>
+      <% end %>
+    </div>
+
+    <% if @bank_formats.any? %>
+      <div data-controller="list-filter">
+        <div class="sticky top-0 bg-container pb-3">
+          <div class="relative">
+            <%= icon "search", class: "absolute left-3 top-1/2 -translate-y-1/2 text-subdued", size: "sm" %>
+            <input type="search"
+                   placeholder="<%= t("settings.bank_sync.links.search_banks") %>"
+                   class="input w-full pl-9"
+                   data-list-filter-target="input"
+                   data-action="input->list-filter#filter">
+          </div>
+        </div>
+
+        <div data-list-filter-target="list" class="divide-y divide-primary rounded-lg border border-primary overflow-hidden">
+          <% @bank_formats.each do |format| %>
+            <%= button_to settings_bank_sync_links_path(format_id: format.id),
+                          method: :post,
+                          class: "filterable-item flex items-center gap-3 p-3 hover:bg-container-inset transition-colors bg-container w-full text-left",
+                          data: {
+                            turbo_frame: "_top",
+                            turbo_confirm: t(
+                              "settings.bank_sync.links.connect_confirm",
+                              bank: format.name,
+                              bank_sender: format.sender_email,
+                              gmail: @connection.gmail_email
+                            ),
+                            filter_name: "#{format.name} #{format.sender_email}"
+                          } do %>
+              <%= render DS::FilledIcon.new(icon: format.credit? ? "credit-card" : "landmark", rounded: true, size: "md") %>
+              <div class="min-w-0 flex-1">
+                <p class="text-primary font-medium truncate"><%= format.name %></p>
+                <p class="text-secondary text-xs truncate">
+                  <%= t("settings.bank_sync.bank_notifies_from") %>: <%= format.sender_email %>
+                </p>
+              </div>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-container-inset text-secondary shrink-0">
+                <%= format.card_type_label %>
+              </span>
+              <%= icon "plus", class: "text-subdued shrink-0" %>
+            <% end %>
+          <% end %>
+        </div>
+
+        <p class="text-secondary text-sm hidden text-center py-4" data-list-filter-target="emptyMessage">
+          <%= t("settings.bank_sync.links.no_banks_match") %>
+        </p>
+      </div>
+    <% else %>
+      <p class="text-secondary text-sm text-center py-8"><%= t("settings.bank_sync.links.all_banks_connected") %></p>
+    <% end %>
+  <% end %>
+<% end %>

@@ -15,13 +15,6 @@
       <%= form.money_field :balance, label: t(".balance"), required: true, default_currency: Current.family.currency %>
     <% end %>
 
-    <% if account.new_record? && !account.linked? %>
-      <%= form.date_field :opening_balance_date,
-          label: t(".opening_balance_date_label"),
-          value: Time.zone.today - 2.years,
-          required: true %>
-    <% end %>
-
     <%= yield form %>
 
     <details class="group">
@@ -30,14 +23,64 @@
         <%= t(".additional_details") %>
       </summary>
 
-      <div class="space-y-2 mt-2 pl-4 border-l border-primary">
+      <div class="space-y-2 mt-2 pl-4 border-l border-primary"
+           <% if @mail_connection && @mail_bank_formats&.any? %>
+             data-controller="mail-bank-format-form"
+             data-mail-bank-format-form-formats-value="<%= @mail_bank_format_data.to_json %>"
+           <% end %>>
+        <% if @mail_connection && @mail_bank_formats&.any? %>
+          <div class="space-y-1">
+            <%= form.collection_select :mail_bank_format_id,
+                @mail_bank_formats,
+                :id,
+                :select_label,
+                { include_blank: t(".mail_bank_format_blank"), label: t(".mail_bank_format_label") },
+                data: {
+                  mail_bank_format_form_target: "mailBankFormat",
+                  action: "change->mail-bank-format-form#updateInstitution"
+                } %>
+            <p class="text-secondary text-xs"><%= t(".mail_bank_format_help", gmail: @mail_connection.gmail_email) %></p>
+            <div class="pt-1">
+              <%= render DS::Link.new(
+                text: t(".connect_bank_link"),
+                href: new_settings_bank_sync_link_path,
+                variant: "ghost",
+                icon: "plus",
+                size: "sm",
+                frame: "modal"
+              ) %>
+            </div>
+          </div>
+
+          <%= form.text_field :account_number_last4,
+              label: t(".account_number_last4_label"),
+              placeholder: t(".account_number_last4_placeholder"),
+              maxlength: 4,
+              inputmode: "numeric",
+              pattern: "\\d{4}" %>
+          <p class="text-secondary text-xs -mt-1"><%= t(".account_number_last4_help") %></p>
+        <% elsif @mail_connection %>
+          <div class="space-y-2 rounded-lg border border-secondary p-3">
+            <p class="text-secondary text-sm"><%= t(".connect_bank_first", gmail: @mail_connection.gmail_email) %></p>
+            <%= render DS::Link.new(
+              text: t(".connect_bank_link"),
+              href: new_settings_bank_sync_link_path,
+              variant: "secondary",
+              icon: "plus",
+              frame: "modal"
+            ) %>
+          </div>
+        <% end %>
+
         <%= form.text_field :institution_name,
             label: t(".institution_name_label"),
-            placeholder: account.provider&.institution_name || t(".institution_name_placeholder") %>
+            placeholder: account.provider&.institution_name || t(".institution_name_placeholder"),
+            data: (@mail_connection && @mail_bank_formats&.any? ? { mail_bank_format_form_target: "institutionName" } : {}) %>
 
         <%= form.text_field :institution_domain,
             label: t(".institution_domain_label"),
-            placeholder: account.provider&.institution_domain || t(".institution_domain_placeholder") %>
+            placeholder: account.provider&.institution_domain || t(".institution_domain_placeholder"),
+            data: (@mail_connection && @mail_bank_formats&.any? ? { mail_bank_format_form_target: "institutionDomain" } : {}) %>
 
         <%= form.text_area :notes,
             label: t(".notes_label"),

@@ -2,7 +2,7 @@ class Provider::Openai::GenericChatParser
   Error = Class.new(StandardError)
 
   def initialize(object)
-    @object = object
+    @object = normalize_object(object)
   end
 
   def parsed
@@ -16,6 +16,25 @@ class Provider::Openai::GenericChatParser
 
   private
     attr_reader :object
+
+    def normalize_object(value)
+      return value unless value.is_a?(String)
+
+      stripped = value.strip
+
+      # SSE: "data: {...}\n\ndata: [DONE]" (some proxies send this for non-stream requests too)
+      if stripped.include?("data:")
+        payload = stripped.scan(/^data:\s*(.+)$/m).flatten.map(&:strip).find { |chunk| chunk.start_with?("{") }
+        return JSON.parse(payload) if payload.present?
+
+        # Concatenated JSON + SSE suffix, e.g. '{...}data: ...'
+        stripped = stripped.split("data:", 2).first.to_s.strip
+      end
+
+      JSON.parse(stripped)
+    rescue JSON::ParserError => e
+      raise Error, "Expected JSON chat response, got: #{value.to_s.truncate(200)} (#{e.message})"
+    end
 
     ChatResponse = Provider::LlmConcept::ChatResponse
     ChatMessage = Provider::LlmConcept::ChatMessage

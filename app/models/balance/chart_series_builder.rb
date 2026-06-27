@@ -1,5 +1,5 @@
 class Balance::ChartSeriesBuilder
-  def initialize(account_ids:, currency:, period: Period.last_30_days, interval: nil, favorable_direction: "up")
+  def initialize(account_ids:, currency:, period: Period.last_30_days, interval: "1 day", favorable_direction: "up")
     @account_ids = account_ids
     @currency = currency
     @period = period
@@ -136,22 +136,13 @@ class Balance::ChartSeriesBuilder
           LIMIT 1
         ) last_bal ON TRUE
         LEFT JOIN LATERAL (
-          SELECT COALESCE(
-            (SELECT er.rate
-             FROM exchange_rates er
-             WHERE er.from_currency = accounts.currency
-               AND er.to_currency = :target_currency
-               AND er.date <= d.date
-             ORDER BY er.date DESC
-             LIMIT 1),
-            (SELECT er.rate
-             FROM exchange_rates er
-             WHERE er.from_currency = accounts.currency
-               AND er.to_currency = :target_currency
-               AND er.date > d.date
-             ORDER BY er.date ASC
-             LIMIT 1)
-          ) AS rate
+          SELECT er.rate
+          FROM exchange_rates er
+          WHERE er.from_currency = accounts.currency
+            AND er.to_currency = :target_currency
+            AND er.date <= d.date
+          ORDER BY er.date DESC
+          LIMIT 1
         ) er ON TRUE
         WHERE accounts.id = ANY(array[:account_ids]::uuid[])
         GROUP BY d.date

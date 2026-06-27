@@ -1,9 +1,8 @@
 class Provider::Lunchflow
   include HTTParty
-  extend SslConfigurable
 
   headers "User-Agent" => "Sure Finance Lunch Flow Client"
-  default_options.merge!({ timeout: 120 }.merge(httparty_ssl_options))
+  default_options.merge!(verify: true, ssl_verify_mode: OpenSSL::SSL::VERIFY_PEER, timeout: 120)
 
   attr_reader :api_key, :base_url
 

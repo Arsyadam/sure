@@ -1,0 +1,24 @@
+<%# locals: (link:) %>
+<% format = link.mail_bank_format %>
+<% gmail = link.mail_sync_connection.gmail_email %>
+<div class="flex items-center gap-3 p-3 rounded-lg border border-primary bg-container">
+  <%= render DS::FilledIcon.new(icon: format.credit? ? "credit-card" : "landmark", rounded: true, size: "md") %>
+  <div class="min-w-0 flex-1">
+    <p class="text-primary font-medium truncate"><%= format.name %></p>
+    <p class="text-secondary text-xs truncate">
+      <%= t("settings.bank_sync.bank_notifies_from") %>: <%= format.sender_email %>
+    </p>
+    <p class="text-secondary text-xs truncate mt-0.5">
+      <%= t("settings.bank_sync.gmail_inbox") %>: <%= gmail %>
+    </p>
+    <span class="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-container-inset text-secondary">
+      <%= format.card_type_label %>
+    </span>
+  </div>
+  <%= button_to settings_bank_sync_link_path(link),
+                method: :delete,
+                class: "shrink-0 p-2 text-destructive hover:bg-destructive/10 rounded-lg",
+                data: { turbo_confirm: t("settings.bank_sync.links.disconnect_confirm", bank: format.name) } do %>
+    <%= icon "unlink", size: "sm" %>
+  <% end %>
+</div>

@@ -5,7 +5,6 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
 
   setup do
     sign_in @user = users(:family_admin)
-    @intro_user = users(:intro_user)
     @family = @user.family
   end
 
@@ -14,25 +13,10 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok
   end
 
-  test "intro page requires guest role" do
-    get intro_path
-
-    assert_redirected_to root_path
-    assert_equal "Intro is only available to guest users.", flash[:alert]
-  end
-
-  test "intro page is accessible for guest users" do
-    sign_in @intro_user
-
-    get intro_path
-
-    assert_response :ok
-  end
-
   test "dashboard renders sankey chart with subcategories" do
     # Create parent category with subcategory
-    parent_category = @family.categories.create!(name: "Shopping", color: "#FF5733")
-    subcategory = @family.categories.create!(name: "Groceries", parent: parent_category, color: "#33FF57")
+    parent_category = @family.categories.create!(name: "Shopping", classification: "expense", color: "#FF5733")
+    subcategory = @family.categories.create!(name: "Groceries", classification: "expense", parent: parent_category, color: "#33FF57")
 
     # Create transactions using helper
     create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100, category: parent_category)
@@ -41,25 +25,6 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     get root_path
     assert_response :ok
     assert_select "[data-controller='sankey-chart']"
-  end
-
-  test "dashboard renders sankey chart zoom controls and stable node ids" do
-    parent_category = @family.categories.create!(name: "Shopping", color: "#FF5733")
-    subcategory = @family.categories.create!(name: "Groceries", parent: parent_category, color: "#33FF57")
-
-    create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100, category: parent_category)
-    create_transaction(account: @family.accounts.first, name: "Grocery store", amount: 50, category: subcategory)
-
-    get root_path
-
-    assert_response :ok
-    assert_select "[data-sankey-chart-target='zoomOutButton'][hidden]", count: 2
-
-    chart = css_select("[data-controller='sankey-chart']").first
-    sankey_data = JSON.parse(chart["data-sankey-chart-data-value"])
-
-    assert_includes sankey_data.fetch("nodes").map { |node| node.fetch("id") }, "cash_flow_node"
-    assert sankey_data.fetch("nodes").any? { |node| node.fetch("id").start_with?("expense_") }
   end
 
   test "changelog" do

@@ -1,8 +1,5 @@
-require "set"
-
 class Provider::YahooFinance < Provider
   include ExchangeRateConcept, SecurityConcept
-  extend SslConfigurable
 
   # Subclass so errors caught in this provider are raised as Provider::YahooFinance::Error
   Error = Class.new(Provider::Error)
@@ -22,22 +19,17 @@ class Provider::YahooFinance < Provider
   # Maximum lookback window for historical data (configurable)
   MAX_LOOKBACK_WINDOW = 10.years
 
-  def max_history_days
-    (MAX_LOOKBACK_WINDOW / 1.day).to_i
-  end
-
   # Minimum delay between requests to avoid rate limiting (in seconds)
   MIN_REQUEST_INTERVAL = 0.5
 
   # Pool of modern browser user-agents to rotate through
   # Based on https://github.com/ranaroussi/yfinance/pull/2277
-  # UPDATED user-agents string on 2026-02-27 with current versions of browsers (Chrome 145, Firefox 148, Safari 26)
   USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
   ].freeze
 
   def initialize
@@ -46,11 +38,21 @@ class Provider::YahooFinance < Provider
   end
 
   def healthy?
-    data = fetch_authenticated_chart("AAPL", { "interval" => "1d", "range" => "1d" })
-    result = data.dig("chart", "result")
-    result.present? && result.any?
-  rescue => e
-    false
+    begin
+      # Test with a known stable ticker (Apple)
+      response = client.get("#{base_url}/v8/finance/chart/AAPL") do |req|
+        req.params["interval"] = "1d"
+        req.params["range"] = "1d"
+      end
+
+      data = JSON.parse(response.body)
+      result = data.dig("chart", "result")
+      health_status = result.present? && result.any?
+
+      health_status
+    rescue => e
+      false
+    end
   end
 
   def usage
@@ -167,8 +169,6 @@ class Provider::YahooFinance < Provider
           )
         end
 
-        securities = deduplicate_dual_listings(securities) unless exchange_operating_mic.present?
-
         cache_result(cache_key, securities)
         securities
       end
@@ -179,8 +179,6 @@ class Provider::YahooFinance < Provider
 
   def fetch_security_info(symbol:, exchange_operating_mic:)
     with_provider_response do
-      symbol = normalize_symbol(symbol, exchange_operating_mic)
-
       # quoteSummary endpoint requires cookie/crumb authentication
       throttle_request
       cookie, crumb = fetch_cookie_and_crumb
@@ -202,9 +200,6 @@ class Provider::YahooFinance < Provider
           req.params["crumb"] = crumb
         end
         data = JSON.parse(response.body)
-        if data.dig("quoteSummary", "error", "code") == "Unauthorized"
-          raise AuthenticationError, "Yahoo Finance authentication failed after crumb refresh"
-        end
       end
 
       result = data.dig("quoteSummary", "result", 0)
@@ -233,7 +228,6 @@ class Provider::YahooFinance < Provider
 
   def fetch_security_price(symbol:, exchange_operating_mic: nil, date:)
     with_provider_response do
-      symbol = normalize_symbol(symbol, exchange_operating_mic)
       cache_key = "security_price_#{symbol}_#{exchange_operating_mic}_#{date}"
       if cached_result = get_cached_result(cache_key)
         cached_result
@@ -270,20 +264,20 @@ class Provider::YahooFinance < Provider
 
   def fetch_security_prices(symbol:, exchange_operating_mic: nil, start_date:, end_date:)
     with_provider_response do
-      symbol = normalize_symbol(symbol, exchange_operating_mic)
       validate_date_params!(start_date, end_date)
       # Convert dates to Unix timestamps using UTC to ensure consistent epoch boundaries across timezones
       period1 = start_date.to_time.utc.to_i
       period2 = end_date.end_of_day.to_time.utc.to_i
 
       throttle_request
-      data = fetch_authenticated_chart(symbol, {
-        "period1" => period1,
-        "period2" => period2,
-        "interval" => "1d",
-        "includeAdjustedClose" => true
-      })
+      response = client.get("#{base_url}/v8/finance/chart/#{symbol}") do |req|
+        req.params["period1"] = period1
+        req.params["period2"] = period2
+        req.params["interval"] = "1d"
+        req.params["includeAdjustedClose"] = true
+      end
 
+      data = JSON.parse(response.body)
       chart_data = data.dig("chart", "result", 0)
 
       raise Error, "No chart data found for #{symbol}" unless chart_data
@@ -293,9 +287,7 @@ class Provider::YahooFinance < Provider
       closes = quotes["close"] || []
 
       # Get currency from metadata
-      meta_exchange = chart_data.dig("meta", "exchangeName") || ""
-      raw_currency = chart_data.dig("meta", "currency")
-      raw_currency ||= default_currency_for_exchange(meta_exchange) || "USD"
+      raw_currency = chart_data.dig("meta", "currency") || "USD"
 
       prices = []
       timestamps.each_with_index do |timestamp, index|
@@ -331,15 +323,6 @@ class Provider::YahooFinance < Provider
     #      Currency Normalization
     # ================================
 
-    # Per-exchange configuration for Yahoo Finance.  Each entry maps an ISO
-    # MIC code to its Yahoo-specific symbol suffix, the default currency when
-    # Yahoo omits one, and an optional dual-listing group with a preference
-    # rank (lower = preferred).  Adding a new market is a one-line hash entry.
-    EXCHANGE_CONFIG = {
-      "XNSE" => { yahoo_suffix: ".NS", default_currency: "INR", dual_list_group: :india, preference_rank: 0 },
-      "XBOM" => { yahoo_suffix: ".BO", default_currency: "INR", dual_list_group: :india, preference_rank: 1 }
-    }.freeze
-
     # Yahoo Finance sometimes returns currencies in minor units (pence, cents)
     # This is not part of ISO 4217 but is a convention used by financial data providers
     # Mapping of Yahoo Finance minor unit codes to standard currency codes and conversion multipliers
@@ -357,42 +340,6 @@ class Provider::YahooFinance < Provider
       else
         [ currency, price ]
       end
-    end
-
-    # Appends the Yahoo Finance symbol suffix for exchanges that require one
-    # (e.g. XNSE → ".NS", XBOM → ".BO").  Already-suffixed symbols pass through.
-    def normalize_symbol(symbol, exchange_operating_mic)
-      suffix = EXCHANGE_CONFIG.dig(exchange_operating_mic, :yahoo_suffix)
-      return symbol if suffix.nil? || symbol.end_with?(suffix)
-      "#{symbol}#{suffix}"
-    end
-
-    # Returns the default currency for a Yahoo exchange name (e.g. "NSE" → "INR")
-    # by resolving through map_exchange_mic → EXCHANGE_CONFIG.  Returns nil for
-    # unknown exchanges so callers can fall back to their own default.
-    def default_currency_for_exchange(yahoo_exchange_name)
-      mic = map_exchange_mic(yahoo_exchange_name)
-      EXCHANGE_CONFIG.dig(mic, :default_currency)
-    end
-
-    # De-duplicates dual-listed securities that share the same company name
-    # and dual_list_group (e.g. NSE + BSE for India), keeping the exchange
-    # with the lowest preference_rank.  Preserves Yahoo's original relevance
-    # ordering by removing duplicates in-place rather than reordering.
-    def deduplicate_dual_listings(securities)
-      dominated = Set.new
-
-      securities
-        .select { |s| EXCHANGE_CONFIG.dig(s.exchange_operating_mic, :dual_list_group) }
-        .group_by { |s| [ EXCHANGE_CONFIG[s.exchange_operating_mic][:dual_list_group], s.name.to_s.strip.downcase ] }
-        .each_value do |group|
-          next unless group.size > 1
-          preferred = group.min_by { |s| EXCHANGE_CONFIG[s.exchange_operating_mic][:preference_rank] }
-          group.each { |s| dominated << s.object_id unless s.equal?(preferred) }
-        end
-
-      return securities if dominated.empty?
-      securities.reject { |s| dominated.include?(s.object_id) }
     end
 
     # ================================
@@ -497,38 +444,11 @@ class Provider::YahooFinance < Provider
           date: Time.at(timestamp).utc.to_date,
           from: from,
           to: to,
-          rate: (BigDecimal("1") / BigDecimal(close_rate.to_s)).round(12)
+          rate: (1.0 / close_rate.to_f).round(8)
         )
       end
 
       rates
-    end
-
-    # Makes a single authenticated GET to /v8/finance/chart/:symbol.
-    # If Yahoo returns a stale-crumb error (200 OK with Unauthorized body),
-    # clears the crumb cache and retries once with fresh credentials.
-    def fetch_authenticated_chart(symbol, params)
-      cookie, crumb = fetch_cookie_and_crumb
-      response = authenticated_client(cookie).get("#{base_url}/v8/finance/chart/#{symbol}") do |req|
-        params.each { |k, v| req.params[k] = v }
-        req.params["crumb"] = crumb
-      end
-      data = JSON.parse(response.body)
-
-      if data.dig("chart", "error", "code") == "Unauthorized"
-        clear_crumb_cache
-        cookie, crumb = fetch_cookie_and_crumb
-        response = authenticated_client(cookie).get("#{base_url}/v8/finance/chart/#{symbol}") do |req|
-          params.each { |k, v| req.params[k] = v }
-          req.params["crumb"] = crumb
-        end
-        data = JSON.parse(response.body)
-        if data.dig("chart", "error", "code") == "Unauthorized"
-          raise AuthenticationError, "Yahoo Finance authentication failed after crumb refresh"
-        end
-      end
-
-      data
     end
 
     def fetch_chart_data(symbol, start_date, end_date, &block)
@@ -537,15 +457,18 @@ class Provider::YahooFinance < Provider
 
       begin
         throttle_request
-        data = fetch_authenticated_chart(symbol, {
-          "period1" => period1,
-          "period2" => period2,
-          "interval" => "1d",
-          "includeAdjustedClose" => true
-        })
+        response = client.get("#{base_url}/v8/finance/chart/#{symbol}") do |req|
+          req.params["period1"] = period1
+          req.params["period2"] = period2
+          req.params["interval"] = "1d"
+          req.params["includeAdjustedClose"] = true
+        end
+
+        data = JSON.parse(response.body)
 
         # Check for Yahoo Finance errors
         if data.dig("chart", "error")
+          error_msg = data.dig("chart", "error", "description") || "Unknown Yahoo Finance error"
           return nil
         end
 
@@ -565,13 +488,13 @@ class Provider::YahooFinance < Provider
         end
 
         results.sort_by(&:date)
-      rescue Faraday::Error, JSON::ParserError => e
+      rescue Faraday::Error => e
         nil
       end
     end
 
     def client
-      @client ||= Faraday.new(url: base_url, ssl: self.class.faraday_ssl_options) do |faraday|
+      @client ||= Faraday.new(url: base_url) do |faraday|
         faraday.request(:retry, {
           max: max_retries,
           interval: retry_interval,
@@ -686,7 +609,7 @@ class Provider::YahooFinance < Provider
 
     # Client for authentication requests (no error raising - fc.yahoo.com returns 404 but sets cookie)
     def auth_client
-      @auth_client ||= Faraday.new(ssl: self.class.faraday_ssl_options) do |faraday|
+      @auth_client ||= Faraday.new do |faraday|
         faraday.headers["User-Agent"] = random_user_agent
         faraday.headers["Accept"] = "*/*"
         faraday.headers["Accept-Language"] = "en-US,en;q=0.9"
@@ -697,7 +620,7 @@ class Provider::YahooFinance < Provider
 
     # Client for authenticated requests (includes cookie header)
     def authenticated_client(cookie)
-      Faraday.new(url: base_url, ssl: self.class.faraday_ssl_options) do |faraday|
+      Faraday.new(url: base_url) do |faraday|
         faraday.request(:retry, {
           max: max_retries,
           interval: retry_interval,
@@ -831,10 +754,6 @@ class Provider::YahooFinance < Provider
         "XJPX" # Japan Exchange Group
       when "ASX"
         "XASX" # Australian Securities Exchange
-      when "NSE", "NSI"
-        "XNSE" # National Stock Exchange of India
-      when "BSE", "BOM"
-        "XBOM" # BSE (Bombay Stock Exchange)
       else
         exchange_code.upcase
       end

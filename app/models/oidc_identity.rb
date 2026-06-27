@@ -25,13 +25,10 @@ class OidcIdentity < ApplicationRecord
       groups: groups
     })
 
-    # Sync name to user only when Sure has nothing on file (first link, or an
-    # admin blanked the field). Edits made inside Sure must survive subsequent
-    # SSO logins — previously the IdP value won unconditionally and clobbered
-    # any manually-edited name on every login (#1103).
+    # Sync name to user if provided (keep existing if IdP doesn't provide)
     user.update!(
-      first_name: user.first_name.presence || auth.info&.first_name.presence,
-      last_name: user.last_name.presence || auth.info&.last_name.presence
+      first_name: auth.info&.first_name.presence || user.first_name,
+      last_name: auth.info&.last_name.presence || user.last_name
     )
 
     # Apply role mapping based on group membership
@@ -98,7 +95,7 @@ class OidcIdentity < ApplicationRecord
 
   # Find the configured provider for this identity
   def provider_config
-    AuthConfig.sso_providers&.find { |p| p[:name] == provider || p[:id] == provider }
+    Rails.configuration.x.auth.sso_providers&.find { |p| p[:name] == provider || p[:id] == provider }
   end
 
   # Validate that the stored issuer matches the configured provider's issuer

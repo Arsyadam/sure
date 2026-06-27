@@ -20,22 +20,6 @@ class HoldingTest < ActiveSupport::TestCase
     assert_in_delta expected_nvda_weight, @nvda.weight, 0.001
   end
 
-  test "calculates portfolio weight after converting foreign-currency holdings" do
-    ExchangeRate.create!(from_currency: "EUR", to_currency: "USD", date: Date.current, rate: 1.5)
-
-    foreign_security = Security.create!(ticker: "ASML", name: "ASML")
-    foreign_holding = @account.holdings.create!(
-      security: foreign_security,
-      date: Date.current,
-      qty: 1,
-      price: 100,
-      amount: 100,
-      currency: "EUR"
-    )
-
-    assert_in_delta 0.75, foreign_holding.weight, 0.001
-  end
-
   test "calculates average cost basis" do
     create_trade(@amzn.security, account: @account, qty: 10, price: 212.00, date: 1.day.ago.to_date)
     create_trade(@amzn.security, account: @account, qty: 15, price: 216.00, date: Date.current)
@@ -74,9 +58,8 @@ class HoldingTest < ActiveSupport::TestCase
     nvda_qty = BigDecimal("5") + BigDecimal("30")
     expected_nvda_usd = nvda_total_usd / nvda_qty
 
-    ExchangeRate.stubs(:find_or_fetch_rate).returns(OpenStruct.new(rate: 1))
-    assert_equal Money.new(expected_amzn_usd, "CAD").exchange_to("USD"), @amzn.avg_cost
-    assert_equal Money.new(expected_nvda_usd, "CAD").exchange_to("USD"), @nvda.avg_cost
+    assert_equal Money.new(expected_amzn_usd, "CAD").exchange_to("USD", fallback_rate: 1), @amzn.avg_cost
+    assert_equal Money.new(expected_nvda_usd, "CAD").exchange_to("USD", fallback_rate: 1), @nvda.avg_cost
   end
 
   test "calculates total return trend" do
@@ -146,18 +129,17 @@ class HoldingTest < ActiveSupport::TestCase
     assert_not @amzn.cost_basis_replaceable_by?("manual")
   end
 
-  test "cost_basis_replaceable_by? respects priority hierarchy and allows refreshes" do
-    # Provider data can be replaced by higher-priority sources (calculated/manual)
-    # and can be refreshed by provider again.
+  test "cost_basis_replaceable_by? respects priority hierarchy" do
+    # Provider data can be replaced by calculated or manual
     @amzn.update!(cost_basis: 200, cost_basis_source: "provider", cost_basis_locked: false)
     assert @amzn.cost_basis_replaceable_by?("calculated")
     assert @amzn.cost_basis_replaceable_by?("manual")
-    assert @amzn.cost_basis_replaceable_by?("provider")
+    assert_not @amzn.cost_basis_replaceable_by?("provider")
 
-    # Calculated data can be replaced by manual and can be refreshed by calculated again.
+    # Calculated data can be replaced by manual only
     @amzn.update!(cost_basis: 200, cost_basis_source: "calculated", cost_basis_locked: false)
     assert @amzn.cost_basis_replaceable_by?("manual")
-    assert @amzn.cost_basis_replaceable_by?("calculated")
+    assert_not @amzn.cost_basis_replaceable_by?("calculated")
     assert_not @amzn.cost_basis_replaceable_by?("provider")
 
     # Manual data when LOCKED cannot be replaced by anything

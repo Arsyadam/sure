@@ -10,6 +10,9 @@ class MoreScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('More'),
+      ),
       body: ListView(
         children: [
           _buildMenuItem(

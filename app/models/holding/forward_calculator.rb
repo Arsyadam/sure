@@ -1,9 +1,8 @@
 class Holding::ForwardCalculator
   attr_reader :account
 
-  def initialize(account, security_ids: nil)
+  def initialize(account)
     @account = account
-    @security_ids = security_ids
     # Track cost basis per security: { security_id => { total_cost: BigDecimal, total_qty: BigDecimal } }
     @cost_basis_tracker = Hash.new { |h, k| h[k] = { total_cost: BigDecimal("0"), total_qty: BigDecimal("0") } }
   end
@@ -18,7 +17,7 @@ class Holding::ForwardCalculator
         trades = portfolio_cache.get_trades(date: date)
         update_cost_basis_tracker(trades)
         next_portfolio = transform_portfolio(current_portfolio, trades, direction: :forward)
-        holdings.concat(build_holdings(next_portfolio, date))
+        holdings += build_holdings(next_portfolio, date)
         current_portfolio = next_portfolio
       end
 
@@ -28,7 +27,7 @@ class Holding::ForwardCalculator
 
   private
     def portfolio_cache
-      @portfolio_cache ||= Holding::PortfolioCache.new(account, security_ids: @security_ids)
+      @portfolio_cache ||= Holding::PortfolioCache.new(account)
     end
 
     def empty_portfolio
@@ -56,8 +55,6 @@ class Holding::ForwardCalculator
 
     def build_holdings(portfolio, date, price_source: nil)
       portfolio.map do |security_id, qty|
-        next if @security_ids && !@security_ids.include?(security_id)
-
         price = portfolio_cache.get_price(security_id, date, source: price_source)
 
         if price.nil?
@@ -89,11 +86,7 @@ class Holding::ForwardCalculator
 
         # Convert trade price to account currency if needed
         trade_price = Money.new(trade.price, trade.currency)
-        begin
-          converted_price = trade_price.exchange_to(account.currency).amount
-        rescue Money::ConversionError
-          converted_price = trade.price
-        end
+        converted_price = trade_price.exchange_to(account.currency, fallback_rate: 1).amount
 
         tracker[:total_cost] += converted_price * trade.qty
         tracker[:total_qty] += trade.qty

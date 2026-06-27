@@ -1,6 +1,5 @@
 class PlaidItemsController < ApplicationController
   before_action :set_plaid_item, only: %i[edit destroy sync]
-  before_action :require_admin!, only: %i[new create select_existing_account link_existing_account edit destroy sync]
 
   def new
     region = params[:region] == "eu" ? :eu : :us
@@ -62,7 +61,7 @@ class PlaidItemsController < ApplicationController
       .select { |pa| pa.account_provider.nil? && pa.account.nil? } # Not linked via new or legacy system
 
     if @available_plaid_accounts.empty?
-      redirect_to account_path(@account), alert: t(".no_available_accounts")
+      redirect_to account_path(@account), alert: "No available Plaid accounts to link. Please connect a new Plaid account first."
     end
   end
 
@@ -72,13 +71,13 @@ class PlaidItemsController < ApplicationController
 
     # Verify the Plaid account belongs to this family's Plaid items
     unless Current.family.plaid_items.include?(plaid_account.plaid_item)
-      redirect_to account_path(@account), alert: t(".invalid_account")
+      redirect_to account_path(@account), alert: "Invalid Plaid account selected"
       return
     end
 
     # Verify the Plaid account is not already linked
     if plaid_account.account_provider.present? || plaid_account.account.present?
-      redirect_to account_path(@account), alert: t(".already_linked")
+      redirect_to account_path(@account), alert: "This Plaid account is already linked"
       return
     end
 
@@ -88,7 +87,7 @@ class PlaidItemsController < ApplicationController
       provider: plaid_account
     )
 
-    redirect_to accounts_path, notice: t(".success")
+    redirect_to accounts_path, notice: "Account successfully linked to Plaid"
   end
 
   private

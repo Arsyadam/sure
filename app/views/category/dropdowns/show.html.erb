@@ -6,17 +6,13 @@
           placeholder="<%= t(".search_placeholder") %>"
           autocomplete="nope"
           type="search"
-          role="combobox"
-          aria-label="<%= t(".search_placeholder") %>"
-          aria-expanded="false"
-          aria-autocomplete="list"
           class="bg-container placeholder:text-sm placeholder:text-secondary font-normal h-10 relative pl-10 w-full border-none rounded-lg focus:outline-hidden focus:ring-0"
           data-list-filter-target="input"
-          data-action="list-filter#filter keydown->list-filter#handleKeydown">
+          data-action="list-filter#filter">
           <%= icon("search", class: "absolute inset-0 ml-2 transform top-1/2 -translate-y-1/2") %>
         </div>
       </div>
-      <div data-list-filter-target="list" role="listbox" class="flex flex-col gap-0.5 p-1.5 mt-0.5 mr-2 max-h-64 overflow-y-scroll scrollbar">
+      <div data-list-filter-target="list" class="flex flex-col gap-0.5 p-1.5 mt-0.5 mr-2 max-h-64 overflow-y-scroll scrollbar">
         <div class="pb-2 pl-4 mr-2 text-secondary hidden" data-list-filter-target="emptyMessage">
           <%= t(".no_categories") %>
         </div>
@@ -51,7 +47,7 @@
           <%= button_to transaction_path(@transaction.entry),
                       method: :patch,
                       data: { turbo_frame: dom_id(@transaction.entry) },
-                      params: { grouped: params[:grouped], entry: { entryable_type: "Transaction", entryable_attributes: { id: @transaction.id, category_id: nil } } },
+                      params: { entry: { entryable_type: "Transaction", entryable_attributes: { id: @transaction.id, category_id: nil } } },
                       class: "flex text-sm font-medium items-center gap-2 text-secondary w-full rounded-lg p-2 hover:bg-container-inset-hover" do %>
             <%= icon("minus") %>
 
@@ -65,17 +61,7 @@
                   data: { turbo_frame: "modal" } do %>
             <%= icon("refresh-cw") %>
 
-            <p><%= t(".match_transfer") %></p>
-          <% end %>
-        <% end %>
-
-        <% if @transaction.splittable? %>
-          <%= link_to new_transaction_split_path(@transaction.entry),
-                  class: "flex text-sm font-medium items-center gap-2 text-secondary w-full rounded-lg p-2 hover:bg-container-inset-hover",
-                  data: { turbo_frame: "modal" } do %>
-            <%= icon("split") %>
-
-            <p><%= t("splits.show.button") %></p>
+            <p>Match transfer/payment</p>
           <% end %>
         <% end %>
 
@@ -85,7 +71,6 @@
                         method: :patch,
                         data: { controller: "auto-submit-form" } do |f| %>
               <%= f.hidden_field "entry[excluded]", value: !@transaction.entry.excluded %>
-              <%= hidden_field_tag :grouped, "true" if params[:grouped] == "true" %>
               <%= f.check_box "entry[excluded]",
                           checked: @transaction.entry.excluded,
                           class: "checkbox checkbox--light",
@@ -93,7 +78,7 @@
             <% end %>
           </div>
 
-          <p><%= t(".one_time", type: @transaction.entry.amount.negative? ? t(".income") : t(".expense")) %></p>
+          <p>One-time <%= @transaction.entry.amount.negative? ? "income" : "expense" %></p>
 
           <span class="text-orange-500 ml-auto">
             <%= icon("asterisk", color: "current") %>

@@ -5,6 +5,5 @@
 # See the ActiveSupport::ParameterFilter documentation for supported notations and behaviors.
 Rails.application.config.filter_parameters += [
   :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :openai_access_token,
-  :client_id, :consumer_key, :snaptrade_user_id, :snaptrade_user_secret,
-  :bank_username, :bank_password, :security_answers, :captcha_input
+  :client_id, :consumer_key, :snaptrade_user_id, :snaptrade_user_secret
 ]

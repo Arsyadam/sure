@@ -28,31 +28,11 @@ class StyledFormBuilder < ActionView::Helpers::FormBuilder
   end
 
   def collection_select(method, collection, value_method, text_method, options = {}, html_options = {})
-    selected_value =
-      if options.key?(:selected)
-        options[:selected]
-      elsif @object.respond_to?(method)
-        @object.public_send(method)
-      end
-    placeholder = options[:prompt] || options[:include_blank] || options[:placeholder] || I18n.t("helpers.select.default_label")
+    field_options = normalize_options(options, html_options)
 
-    @template.render(
-      DS::Select.new(
-        form: self,
-        method: method,
-        items: collection.map { |item| { value: item.public_send(value_method), label: item.public_send(text_method), object: item } },
-        selected: selected_value,
-        placeholder: placeholder,
-        searchable: options.fetch(:searchable, false),
-        menu_placement: options[:menu_placement],
-        variant: options.fetch(:variant, :simple),
-        include_blank: options[:include_blank],
-        label: options[:label],
-        container_class: options[:container_class],
-        label_tooltip: options[:label_tooltip],
-        html_options: html_options
-      )
-    )
+    build_field(method, field_options, html_options) do |merged_html_options|
+      super(method, collection, value_method, text_method, options, merged_html_options)
+    end
   end
 
   def money_field(amount_method, options = {})
@@ -89,7 +69,6 @@ class StyledFormBuilder < ActionView::Helpers::FormBuilder
     @template.render(
       DS::Button.new(
         text: value,
-        type: "submit",
         data: (options[:data] || {}).merge({ turbo_submits_with: "Submitting..." }),
         full_width: true
       )

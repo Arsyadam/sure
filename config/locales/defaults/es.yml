@@ -1,10 +1,5 @@
 ---
 es:
-  defaults:
-    brand_name: "%{brand_name}"
-    product_name: "%{product_name}"
-  global:
-    expand: "Expandir"
   activerecord:
     errors:
       messages:
@@ -153,8 +148,6 @@ es:
   helpers:
     select:
       prompt: Por favor seleccione
-      search_placeholder: Buscar
-      default_label: Seleccionar...
     submit:
       create: Crear %{model}
       submit: Guardar %{model}

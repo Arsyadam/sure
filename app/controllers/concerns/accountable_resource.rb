@@ -2,11 +2,11 @@ module AccountableResource
   extend ActiveSupport::Concern
 
   included do
-    include Periodable, StreamExtensions
+    include Periodable
 
-    before_action :set_account, only: [ :show ]
-    before_action :set_manageable_account, only: [ :edit, :update ]
+    before_action :set_account, only: [ :show, :edit, :update ]
     before_action :set_link_options, only: :new
+    before_action :set_mail_sync_context, only: %i[new create edit update]
   end
 
   class_methods do
@@ -35,37 +35,26 @@ module AccountableResource
   end
 
   def create
-    opening_balance_date = begin
-      account_params[:opening_balance_date].presence&.to_date
-    rescue Date::Error
-      nil
-    end || (Time.zone.today - 2.years)
-    Account.transaction do
-      @account = Current.family.accounts.create_and_sync(
-        account_params.except(:return_to, :opening_balance_date).merge(owner: Current.user),
-        opening_balance_date: opening_balance_date
-      )
-      @account.lock_saved_attributes!
-    end
+    @account = Current.family.accounts.create_and_sync(account_params.except(:return_to))
+    @account.lock_saved_attributes!
 
     redirect_to account_params[:return_to].presence || @account, notice: t("accounts.create.success", type: accountable_type.name.underscore.humanize)
   end
 
   def update
-    # Handle balance update if the value actually changed
-    if account_params[:balance].present? && account_params[:balance].to_d != @account.balance
+    # Handle balance update if provided
+    if account_params[:balance].present?
       result = @account.set_current_balance(account_params[:balance].to_d)
       unless result.success?
         @error_message = result.error_message
         render :edit, status: :unprocessable_entity
         return
       end
+      @account.sync_later
     end
 
-    # Update remaining account attributes. Note: currency is intentionally allowed
-    # here so all account types (depositories, credit cards, loans, etc.) can
-    # have their currency changed via this shared update path.
-    update_params = account_params.except(:return_to, :balance, :opening_balance_date)
+    # Update remaining account attributes
+    update_params = account_params.except(:return_to, :balance, :currency)
     unless @account.update(update_params)
       @error_message = @account.errors.full_messages.join(", ")
       render :edit, status: :unprocessable_entity
@@ -87,24 +76,34 @@ module AccountableResource
       )
     end
 
+    def set_mail_sync_context
+      @mail_connection = Current.family.mail_sync_connections.find_by(user: Current.user)
+      return unless @mail_connection
+
+      type = @account&.accountable_type || accountable_type.name
+      linked_ids = @mail_connection.bank_links.select(:mail_bank_format_id)
+      @mail_bank_formats = MailBankFormat.for_accountable_type(type).where(id: linked_ids).ordered
+
+      if @account&.mail_bank_format_id.present? && @mail_bank_formats.none? { |f| f.id == @account.mail_bank_format_id }
+        current = MailBankFormat.find_by(id: @account.mail_bank_format_id)
+        @mail_bank_formats = [ current, *@mail_bank_formats ].compact.uniq if current
+      end
+
+      @mail_bank_format_data = @mail_bank_formats.index_by(&:id).transform_values(&:institution_json)
+    end
+
     def accountable_type
       controller_name.classify.constantize
     end
 
     def set_account
-      @account = Current.user.accessible_accounts.find(params[:id])
-    end
-
-    def set_manageable_account
-      @account = Current.user.accessible_accounts.find(params[:id])
-      require_account_permission!(@account)
+      @account = Current.family.accounts.find(params[:id])
     end
 
     def account_params
       params.require(:account).permit(
         :name, :balance, :subtype, :currency, :accountable_type, :return_to,
-        :opening_balance_date,
-        :institution_name, :institution_domain, :notes,
+        :institution_name, :institution_domain, :notes, :account_number_last4, :mail_bank_format_id,
         accountable_attributes: self.class.permitted_accountable_attributes
       )
     end

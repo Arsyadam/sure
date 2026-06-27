@@ -47,15 +47,15 @@ module Provider::Openai::Concerns::UsageRecorder
 
     # Records failed LLM usage for a family with error details
     def record_usage_error(model_name, operation:, error:, metadata: {})
-      return unless family && error
+      return unless family
 
-      Rails.logger.info("Recording failed LLM usage - Operation: #{operation}, Error: #{safe_error_message(error)}")
+      Rails.logger.info("Recording failed LLM usage - Operation: #{operation}, Error: #{error.message}")
 
       # Extract HTTP status code if available from the error
       http_status_code = extract_http_status_code(error)
 
       error_metadata = metadata.merge(
-        error: safe_error_message(error),
+        error: error.message,
         http_status_code: http_status_code
       )
 
@@ -86,17 +86,11 @@ module Provider::Openai::Concerns::UsageRecorder
         error.status_code
       elsif error.respond_to?(:response) && error.response.respond_to?(:code)
         error.response.code.to_i
-      elsif safe_error_message(error) =~ /(\d{3})/
+      elsif error.message =~ /(\d{3})/
         # Extract 3-digit HTTP status code from error message
         $1.to_i
       else
         nil
       end
-    end
-
-    def safe_error_message(error)
-      error&.message
-    rescue => e
-      "(message unavailable: #{e.class})"
     end
 end

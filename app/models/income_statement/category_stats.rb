@@ -1,13 +1,10 @@
 class IncomeStatement::CategoryStats
-  def initialize(family, interval: "month", account_ids: nil)
+  def initialize(family, interval: "month")
     @family = family
     @interval = interval
-    @account_ids = account_ids
   end
 
   def call
-    return [] if @account_ids&.empty?
-
     ActiveRecord::Base.connection.select_all(sanitized_query_sql).map do |row|
       StatRow.new(
         category_id: row["category_id"],
@@ -41,23 +38,10 @@ class IncomeStatement::CategoryStats
       params
     end
 
-    def budget_excluded_kinds_sql
-      @budget_excluded_kinds_sql ||= Transaction::BUDGET_EXCLUDED_KINDS.map { |k| "'#{k}'" }.join(", ")
-    end
-
-    def pending_providers_sql
-      Transaction.pending_providers_sql("t")
-    end
-
     def exclude_tax_advantaged_sql
       ids = @family.tax_advantaged_account_ids
       return "" if ids.empty?
       "AND a.id NOT IN (:tax_advantaged_account_ids)"
-    end
-
-    def scope_to_account_ids_sql
-      return "" if @account_ids.nil?
-      ActiveRecord::Base.sanitize_sql([ "AND a.id IN (?)", @account_ids ])
     end
 
     def query_sql
@@ -66,8 +50,8 @@ class IncomeStatement::CategoryStats
           SELECT
             c.id as category_id,
             date_trunc(:interval, ae.date) as period,
-            CASE WHEN t.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END as classification,
-            SUM(CASE WHEN t.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE ae.amount * COALESCE(er.rate, 1) END) as total
+            CASE WHEN t.kind = 'investment_contribution' THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END as classification,
+            SUM(CASE WHEN t.kind = 'investment_contribution' THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE ae.amount * COALESCE(er.rate, 1) END) as total
           FROM transactions t
           JOIN entries ae ON ae.entryable_id = t.id AND ae.entryable_type = 'Transaction'
           JOIN accounts a ON a.id = ae.account_id
@@ -78,12 +62,12 @@ class IncomeStatement::CategoryStats
             er.to_currency = :target_currency
           )
           WHERE a.family_id = :family_id
-            AND t.kind NOT IN (#{budget_excluded_kinds_sql})
+            AND t.kind NOT IN ('funds_movement', 'one_time', 'cc_payment')
             AND ae.excluded = false
-            #{pending_providers_sql}
+            AND (t.extra -> 'simplefin' ->> 'pending')::boolean IS DISTINCT FROM true
+            AND (t.extra -> 'plaid' ->> 'pending')::boolean IS DISTINCT FROM true
             #{exclude_tax_advantaged_sql}
-            #{scope_to_account_ids_sql}
-          GROUP BY c.id, period, CASE WHEN t.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END
+          GROUP BY c.id, period, CASE WHEN t.kind = 'investment_contribution' THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END
         )
         SELECT
           category_id,

@@ -4,26 +4,12 @@ class Settings::ProfilesControllerTest < ActionDispatch::IntegrationTest
   setup do
     @admin = users(:family_admin)
     @member = users(:family_member)
-    @intro_user = users(:intro_user)
   end
 
   test "should get show" do
     sign_in @admin
     get settings_profile_path
     assert_response :success
-  end
-
-  test "intro user sees profile without settings navigation" do
-    sign_in @intro_user
-    get settings_profile_path
-
-    assert_response :success
-    assert_select "#mobile-settings-nav", count: 0
-    assert_select "h2", text: I18n.t("settings.profiles.show.household_title"), count: 0
-    assert_select "[data-action='app-layout#openMobileSidebar']", count: 0
-    assert_select "[data-action='app-layout#closeMobileSidebar']", count: 0
-    assert_select "[data-action='app-layout#toggleLeftSidebar']", count: 0
-    assert_select "[data-action='app-layout#toggleRightSidebar']", count: 0
   end
 
   test "admin can remove a family member" do
@@ -33,7 +19,7 @@ class Settings::ProfilesControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_redirected_to settings_profile_path
-    assert_equal I18n.t("settings.profiles.destroy.member_removed"), flash[:notice]
+    assert_equal "Member removed successfully.", flash[:notice]
     assert_raises(ActiveRecord::RecordNotFound) { User.find(@member.id) }
   end
 
@@ -74,7 +60,7 @@ class Settings::ProfilesControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_redirected_to settings_profile_path
-    assert_equal I18n.t("settings.profiles.destroy.member_removed"), flash[:notice]
+    assert_equal "Member removed successfully.", flash[:notice]
     assert_raises(ActiveRecord::RecordNotFound) { User.find(@member.id) }
     assert_raises(ActiveRecord::RecordNotFound) { Invitation.find(invitation.id) }
   end

@@ -5,11 +5,10 @@ class IncomeStatement
 
   monetize :median_expense, :median_income
 
-  attr_reader :family, :user
+  attr_reader :family
 
-  def initialize(family, user: nil)
+  def initialize(family)
     @family = family
-    @user = user || Current.user
   end
 
   def totals(transactions_scope: nil, date_range:)
@@ -30,79 +29,11 @@ class IncomeStatement
   end
 
   def expense_totals(period: Period.current_month)
-    # Memoized per instance so callers that also invoke `net_category_totals`
-    @expense_totals_by_period ||= {}
-    @expense_totals_by_period[period_cache_key(period)] ||=
-      build_period_total(classification: "expense", period: period)
+    build_period_total(classification: "expense", period: period)
   end
 
   def income_totals(period: Period.current_month)
-    @income_totals_by_period ||= {}
-    @income_totals_by_period[period_cache_key(period)] ||=
-      build_period_total(classification: "income", period: period)
-  end
-
-  def net_category_totals(period: Period.current_month)
-    @net_category_totals_by_period ||= {}
-    cached = @net_category_totals_by_period[period_cache_key(period)]
-    return cached if cached
-
-    expense = expense_totals(period: period)
-    income = income_totals(period: period)
-
-    # Use a stable key for each category: id for persisted, invariant token for synthetic
-    cat_key = ->(ct) {
-      if ct.category.uncategorized?
-        :uncategorized
-      elsif ct.category.other_investments?
-        :other_investments
-      else
-        ct.category.id
-      end
-    }
-
-    expense_by_cat = expense.category_totals.reject { |ct| ct.category.subcategory? }.index_by { |ct| cat_key.call(ct) }
-    income_by_cat = income.category_totals.reject { |ct| ct.category.subcategory? }.index_by { |ct| cat_key.call(ct) }
-
-    all_keys = (expense_by_cat.keys + income_by_cat.keys).uniq
-    raw_expense_categories = []
-    raw_income_categories = []
-
-    all_keys.each do |key|
-      exp_ct = expense_by_cat[key]
-      inc_ct = income_by_cat[key]
-      exp_total = exp_ct&.total || 0
-      inc_total = inc_ct&.total || 0
-      net = exp_total - inc_total
-      category = exp_ct&.category || inc_ct&.category
-
-      if net > 0
-        raw_expense_categories << { category: category, total: net }
-      elsif net < 0
-        raw_income_categories << { category: category, total: net.abs }
-      end
-    end
-
-    total_net_expense = raw_expense_categories.sum { |r| r[:total] }
-    total_net_income = raw_income_categories.sum { |r| r[:total] }
-
-    net_expense_categories = raw_expense_categories.map do |r|
-      weight = total_net_expense.zero? ? 0 : (r[:total].to_f / total_net_expense) * 100
-      CategoryTotal.new(category: r[:category], total: r[:total], currency: family.currency, weight: weight)
-    end
-
-    net_income_categories = raw_income_categories.map do |r|
-      weight = total_net_income.zero? ? 0 : (r[:total].to_f / total_net_income) * 100
-      CategoryTotal.new(category: r[:category], total: r[:total], currency: family.currency, weight: weight)
-    end
-
-    @net_category_totals_by_period[period_cache_key(period)] = NetCategoryTotals.new(
-      net_expense_categories: net_expense_categories,
-      net_income_categories: net_income_categories,
-      total_net_expense: total_net_expense,
-      total_net_income: total_net_income,
-      currency: family.currency
-    )
+    build_period_total(classification: "income", period: period)
   end
 
   def median_expense(interval: "month", category: nil)
@@ -129,14 +60,9 @@ class IncomeStatement
     ScopeTotals = Data.define(:transactions_count, :income_money, :expense_money)
     PeriodTotal = Data.define(:classification, :total, :currency, :category_totals)
     CategoryTotal = Data.define(:category, :total, :currency, :weight)
-    NetCategoryTotals = Data.define(:net_expense_categories, :net_income_categories, :total_net_expense, :total_net_income, :currency)
 
     def categories
       @categories ||= family.categories.all.to_a
-    end
-
-    def period_cache_key(period)
-      [ period.start_date, period.end_date ]
     end
 
     def build_period_total(classification:, period:)
@@ -189,31 +115,23 @@ class IncomeStatement
     def family_stats(interval: "month")
       @family_stats ||= {}
       @family_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "family_stats", family.id, user&.id, interval, included_account_ids_hash, family.entries_cache_version
-      ]) { FamilyStats.new(family, interval:, account_ids: included_account_ids).call }
+        "income_statement", "family_stats", family.id, interval, family.entries_cache_version
+      ]) { FamilyStats.new(family, interval:).call }
     end
 
     def category_stats(interval: "month")
       @category_stats ||= {}
       @category_stats[interval] ||= Rails.cache.fetch([
-        "income_statement", "category_stats", family.id, user&.id, interval, included_account_ids_hash, family.entries_cache_version
-      ]) { CategoryStats.new(family, interval:, account_ids: included_account_ids).call }
-    end
-
-    def included_account_ids
-      @included_account_ids ||= user ? user.finance_accounts.pluck(:id) : nil
-    end
-
-    def included_account_ids_hash
-      @included_account_ids_hash ||= included_account_ids ? Digest::MD5.hexdigest(included_account_ids.sort.join(",")) : nil
+        "income_statement", "category_stats", family.id, interval, family.entries_cache_version
+      ]) { CategoryStats.new(family, interval:).call }
     end
 
     def totals_query(transactions_scope:, date_range:)
       sql_hash = Digest::MD5.hexdigest(transactions_scope.to_sql)
 
       Rails.cache.fetch([
-        "income_statement", "totals_query", "v2", family.id, user&.id, included_account_ids_hash, sql_hash, date_range.begin, date_range.end, family.entries_cache_version
-      ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range, included_account_ids: included_account_ids).call }
+        "income_statement", "totals_query", "v2", family.id, sql_hash, family.entries_cache_version
+      ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range).call }
     end
 
     def monetizable_currency

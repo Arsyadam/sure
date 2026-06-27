@@ -201,11 +201,10 @@ class TransactionsTest < ApplicationSystemTestCase
   end
 
   test "transfers should always sum to zero" do
-    # Use two accounts that result in funds_movement kind (not investment/crypto which become investment_contribution)
     asset_account = accounts(:other_asset)
-    depository_account = accounts(:depository)
+    investment_account = accounts(:investment)
     outflow_entry = create_transaction("outflow", Date.current, 500, account: asset_account)
-    inflow_entry = create_transaction("inflow", 1.day.ago.to_date, -500, account: depository_account)
+    inflow_entry = create_transaction("inflow", 1.day.ago.to_date, -500, account: investment_account)
     @user.family.auto_match_transfers!
     visit transactions_url
 

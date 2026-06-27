@@ -9,8 +9,7 @@ class ApiKey < ApplicationRecord
   end
 
   # Constants
-  SOURCES = [ "web", "mobile", "monitoring" ].freeze
-  DEMO_MONITORING_KEY = "demo_monitoring_key_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+  SOURCES = [ "web", "mobile" ].freeze
 
   # Validations
   validates :display_key, presence: true, uniqueness: true
@@ -22,11 +21,9 @@ class ApiKey < ApplicationRecord
 
   # Callbacks
   before_validation :set_display_key
-  before_destroy :prevent_demo_monitoring_key_destroy!
 
   # Scopes
   scope :active, -> { where(revoked_at: nil).where("expires_at IS NULL OR expires_at > ?", Time.current) }
-  scope :visible, -> { where.not(display_key: DEMO_MONITORING_KEY) }
 
   # Class methods
   def self.find_by_value(plain_key)
@@ -60,17 +57,7 @@ class ApiKey < ApplicationRecord
   end
 
   def revoke!
-    raise ActiveRecord::RecordNotDestroyed, "Cannot revoke demo monitoring API key" if demo_monitoring_key?
     update!(revoked_at: Time.current)
-  end
-
-  def delete
-    raise ActiveRecord::RecordNotDestroyed, "Cannot destroy demo monitoring API key" if demo_monitoring_key?
-    super
-  end
-
-  def demo_monitoring_key?
-    display_key == DEMO_MONITORING_KEY
   end
 
   def update_last_used!
@@ -107,12 +94,5 @@ class ApiKey < ApplicationRecord
       if user&.api_keys&.active&.where(source: source)&.where&.not(id: id)&.exists?
         errors.add(:user, "can only have one active API key per source (#{source})")
       end
-    end
-
-    def prevent_demo_monitoring_key_destroy!
-      return unless demo_monitoring_key?
-
-      errors.add(:base, :cannot_destroy_demo_key)
-      throw(:abort)
     end
 end

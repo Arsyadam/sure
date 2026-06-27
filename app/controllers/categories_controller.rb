@@ -58,7 +58,7 @@ class CategoriesController < ApplicationController
 
   def destroy_all
     Current.family.categories.destroy_all
-    redirect_back_or_to categories_path, notice: t(".success")
+    redirect_back_or_to categories_path, notice: "All categories deleted"
   end
 
   def bootstrap
@@ -87,6 +87,6 @@ class CategoriesController < ApplicationController
     end
 
     def category_params
-      params.require(:category).permit(:name, :color, :parent_id, :lucide_icon)
+      params.require(:category).permit(:name, :color, :parent_id, :classification, :lucide_icon)
     end
 end

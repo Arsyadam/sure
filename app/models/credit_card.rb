@@ -1,8 +1,6 @@
 class CreditCard < ApplicationRecord
   include Accountable
 
-  DEFAULT_SUBTYPE = "credit_card"
-
   SUBTYPES = {
     "credit_card" => { short: "Credit Card", long: "Credit Card" }
   }.freeze

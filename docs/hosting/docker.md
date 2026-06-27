@@ -111,54 +111,6 @@ and change it to `true`
 RAILS_ASSUME_SSL: "true"
 ```
 
-#### WebAuthn MFA (passkeys and security keys)
-
-If you enable passkeys, Touch ID, Windows Hello, or hardware security keys as MFA credentials, pin the WebAuthn relying party settings in your `.env` file:
-
-```txt
-WEBAUTHN_RP_ID="example.com"
-WEBAUTHN_ALLOWED_ORIGINS="https://sure.example.com"
-```
-
-`WEBAUTHN_RP_ID` should usually be your registrable domain, not a full URL. See [WebAuthn MFA Configuration](webauthn.md) before changing hostnames or reverse proxy settings for an instance with registered passkeys.
-
-#### Binding to IPv6 (optional)
-
-By default Sure listens on `0.0.0.0:3000` (IPv4 wildcard) inside the container and Docker publishes the port on the host's IPv4 interface only. If you want the app reachable over IPv6 as well, two things need to change:
-
-1. **Tell the app to bind to `[::]`** by setting `BINDING=::` in the container environment. `BINDING` is Rails' native env var for the server bind address. On any kernel with `net.ipv6.bindv6only=0` (the default on Linux and macOS) a single `[::]` bind is **dual-stack**: it accepts both IPv6 and IPv4 clients from the same socket. You do not need two binds and you do not need two ports.
-2. **Tell Docker to publish the host port on IPv6** by adding a bracketed-host `ports:` entry alongside the existing IPv4 one.
-
-In `compose.yml`:
-
-```yaml
-services:
-  web:
-    ports:
-      - ${PORT:-3000}:3000
-      - "[::]:${PORT:-3000}:3000"
-    environment:
-      <<: *rails_env
-      BINDING: "::"
-```
-
-With both changes in place, `http://127.0.0.1:3000/` and `http://[::1]:3000/` both work against the same container.
-
-**Note:** Docker's default userland proxy already bridges host-side IPv6 publishes to the container's internal IPv4 address, so in many setups just adding the `[::]:` port entry is enough. Setting `BINDING=::` inside the container only becomes load-bearing when the Docker daemon has `"ipv6": true` + `"ip6tables": true` configured (uncommon for self-hosters) and forwards raw IPv6 packets into the container via netfilter instead of the proxy. Setting both is harmless and future-proof.
-
-If you are running behind a reverse proxy that terminates TLS, nothing else changes — `proxy_pass http://[::1]:3000` and `proxy_pass http://127.0.0.1:3000` both work because the `[::]` bind is dual-stack.
-
-#### Local development bind
-
-For `bin/dev` on your own machine, the server now defaults to Rails' native `localhost` bind (`127.0.0.1` + `[::1]`) — only reachable from the same machine. If you need external access (phone on the same WiFi, devcontainer port forwarding, LAN testing), set the Rails-native env var:
-
-```bash
-BINDING=0.0.0.0 bin/dev   # reachable from LAN
-BINDING=::       bin/dev  # IPv6 dual-stack
-```
-
-The bundled devcontainer at `.devcontainer/docker-compose.yml` already pins `BINDING: "0.0.0.0"` so Docker port forwarding reaches the app — no manual override needed when using the devcontainer.
-
 ### Step 4: Run the app
 
 You are now ready to run the app. Start with the following command to make sure everything is working:
@@ -199,62 +151,6 @@ docker compose ls
 Your app is now set up. You can visit it at `http://localhost:3000` in your browser.
 
 If you find bugs or have a feature request, be sure to read through our [contributing guide here](https://github.com/we-promise/sure/wiki/How-to-Contribute-Effectively-to-Sure).
-
-## AI features, external assistant, and Pipelock
-
-Sure ships with a separate compose file for AI-related features: `compose.example.ai.yml`. It adds:
-
-- **Pipelock** (always on): AI agent security proxy that scans outbound LLM calls and inbound MCP traffic
-- **Ollama + Open WebUI** (optional `--profile ai`): local LLM inference
-
-### Using the AI compose file
-
-```bash
-# Download both compose files
-curl -o compose.yml https://raw.githubusercontent.com/we-promise/sure/main/compose.example.yml
-curl -o compose.ai.yml https://raw.githubusercontent.com/we-promise/sure/main/compose.example.ai.yml
-curl -o pipelock.example.yaml https://raw.githubusercontent.com/we-promise/sure/main/pipelock.example.yaml
-
-# Run with Pipelock (no local LLM)
-docker compose -f compose.ai.yml up -d
-
-# Run with Pipelock + Ollama
-docker compose -f compose.ai.yml --profile ai up -d
-```
-
-### Setting up the external AI assistant
-
-The external assistant delegates chat to a remote AI agent instead of calling LLMs directly. The agent calls back to Sure's `/mcp` endpoint for financial data (accounts, transactions, balance sheet).
-
-1. Set the MCP endpoint credentials in your `.env`:
-   ```bash
-   MCP_API_TOKEN=generate-a-random-token-here
-   MCP_USER_EMAIL=your@email.com   # must match an existing Sure user
-   ```
-
-2. Set the external assistant connection:
-   ```bash
-   EXTERNAL_ASSISTANT_URL=https://your-agent/v1/chat/completions
-   EXTERNAL_ASSISTANT_TOKEN=your-agent-api-token
-   ```
-
-3. Choose how to activate:
-   - **Per-family (UI):** Go to Settings > Self-Hosting > AI Assistant, select "External"
-   - **Global (env):** Set `ASSISTANT_TYPE=external` to force all families to use external
-
-See [docs/hosting/ai.md](ai.md) for full configuration details including agent ID, session keys, and email allowlisting.
-
-### Pipelock security proxy
-
-Pipelock sits between Sure and external services, scanning AI traffic for:
-
-- **Secret exfiltration** (DLP): catches API keys, tokens, or personal data leaking in prompts
-- **Prompt injection**: detects attempts to override system instructions
-- **Tool poisoning**: validates MCP tool calls against known-safe patterns
-
-When using `compose.example.ai.yml`, Pipelock is always running. External AI agents should connect to port 8889 (MCP reverse proxy) instead of directly to Sure's `/mcp` on port 3000.
-
-For full Pipelock configuration, see [docs/hosting/pipelock.md](pipelock.md).
 
 ## How to update your app
 

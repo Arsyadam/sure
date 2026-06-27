@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import '../models/custom_proxy_header.dart';
 import '../services/api_config.dart';
-import '../services/custom_proxy_headers_service.dart';
-import '../widgets/custom_proxy_headers_editor.dart';
 
 class BackendConfigScreen extends StatefulWidget {
   final VoidCallback? onConfigSaved;
@@ -20,10 +17,8 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
   final _urlController = TextEditingController();
   bool _isLoading = false;
   bool _isTesting = false;
-  bool _hasLoadedConfig = false;
   String? _errorMessage;
   String? _successMessage;
-  List<CustomProxyHeader> _customHeaders = [];
 
   @override
   void initState() {
@@ -38,27 +33,12 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
   }
 
   Future<void> _loadSavedUrl() async {
-    String urlToShow = ApiConfig.baseUrl;
-    List<CustomProxyHeader> headers = const [];
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedUrl = prefs.getString('backend_url');
-      headers = await CustomProxyHeadersService.instance.loadHeaders();
-      if (savedUrl != null && savedUrl.isNotEmpty) {
-        urlToShow = savedUrl;
-      }
-    } catch (e, stack) {
-      // Swallow storage failures so the screen still becomes interactive with
-      // sensible defaults; the user can re-enter and re-save.
-      debugPrint('BackendConfigScreen: failed to load saved config: $e\n$stack');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _urlController.text = urlToShow;
-          _customHeaders = headers;
-          _hasLoadedConfig = true;
-        });
-      }
+    final prefs = await SharedPreferences.getInstance();
+    final savedUrl = prefs.getString('backend_url');
+    if (mounted && savedUrl != null && savedUrl.isNotEmpty) {
+      setState(() {
+        _urlController.text = savedUrl;
+      });
     }
   }
 
@@ -71,44 +51,32 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
       _successMessage = null;
     });
 
-    final previousHeaders = ApiConfig.customProxyHeaders;
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
-
-      // Apply the unsaved edits only for the duration of this probe so the
-      // test reflects what the user is about to save. Restored in `finally`.
-      ApiConfig.setCustomProxyHeaders(_customHeaders);
+      final normalizedUrl = _urlController.text.trim().replaceAll(RegExp(r'/+$'), '');
 
       // Check /sessions/new page to verify it's a Sure backend
       final sessionsUrl = Uri.parse('$normalizedUrl/sessions/new');
-      final sessionsResponse = await http
-          .get(sessionsUrl, headers: ApiConfig.htmlHeaders())
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              throw Exception(
-                'Connection timeout. Please check the URL and try again.',
-              );
-            },
-          );
+      final sessionsResponse = await http.get(
+        sessionsUrl,
+        headers: {'Accept': 'text/html'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Connection timeout. Please check the URL and try again.');
+        },
+      );
 
-      if (sessionsResponse.statusCode >= 200 &&
-          sessionsResponse.statusCode < 400) {
+      if (sessionsResponse.statusCode >= 200 && sessionsResponse.statusCode < 400) {
         if (mounted) {
           setState(() {
-            _successMessage =
-                'Connection successful!';
+            _successMessage = 'Connection successful! Sure backend is reachable.';
           });
         }
       } else {
         if (mounted) {
           setState(() {
-            _errorMessage =
-                'Server responded with status ${sessionsResponse.statusCode}. Please check if this is a Sure backend server.';
+            _errorMessage = 'Server responded with status ${sessionsResponse.statusCode}. Please check if this is a Sure backend server.';
           });
         }
       }
@@ -119,7 +87,6 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
         });
       }
     } finally {
-      ApiConfig.setCustomProxyHeaders(previousHeaders);
       if (mounted) {
         setState(() {
           _isTesting = false;
@@ -138,18 +105,11 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
 
     try {
       // Normalize base URL by removing trailing slashes
-      final normalizedUrl = _urlController.text.trim().replaceAll(
-        RegExp(r'/+$'),
-        '',
-      );
+      final normalizedUrl = _urlController.text.trim().replaceAll(RegExp(r'/+$'), '');
 
       // Save URL to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('backend_url', normalizedUrl);
-
-      // Save custom proxy headers
-      await CustomProxyHeadersService.instance.saveHeaders(_customHeaders);
-      ApiConfig.setCustomProxyHeaders(_customHeaders);
 
       // Update ApiConfig
       ApiConfig.setBaseUrl(normalizedUrl);
@@ -181,8 +141,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
     final trimmedValue = value.trim();
 
     // Check if it starts with http:// or https://
-    if (!trimmedValue.startsWith('http://') &&
-        !trimmedValue.startsWith('https://')) {
+    if (!trimmedValue.startsWith('http://') && !trimmedValue.startsWith('https://')) {
       return 'URL must start with http:// or https://';
     }
 
@@ -221,7 +180,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Configuration',
+                  'Backend Configuration',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: colorScheme.primary,
@@ -230,7 +189,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Update your Sure server URL',
+                  'Enter your Sure Finance backend URL',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -250,7 +209,10 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.info_outline, color: colorScheme.primary),
+                          Icon(
+                            Icons.info_outline,
+                            color: colorScheme.primary,
+                          ),
                           const SizedBox(width: 12),
                           Text(
                             'Example URLs',
@@ -263,7 +225,7 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '• https://demo.sure.am\n'
+                        '• https://sure.lazyrhythm.com\n'
                         '• https://your-domain.com\n'
                         '• http://localhost:3000',
                         style: TextStyle(
@@ -287,14 +249,15 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline, color: colorScheme.error),
+                        Icon(
+                          Icons.error_outline,
+                          color: colorScheme.error,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             _errorMessage!,
-                            style: TextStyle(
-                              color: colorScheme.onErrorContainer,
-                            ),
+                            style: TextStyle(color: colorScheme.onErrorContainer),
                           ),
                         ),
                         IconButton(
@@ -353,47 +316,12 @@ class _BackendConfigScreenState extends State<BackendConfigScreen> {
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
                   decoration: const InputDecoration(
-                    labelText: 'Sure server URL',
+                    labelText: 'Backend URL',
                     prefixIcon: Icon(Icons.cloud_outlined),
-                    hintText: 'https://app.sure.am',
+                    hintText: 'https://sure.lazyrhythm.com',
                   ),
                   validator: _validateUrl,
                   onFieldSubmitted: (_) => _saveAndContinue(),
-                ),
-                const SizedBox(height: 24),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.http_outlined),
-                  title: const Text('Custom proxy headers'),
-                  subtitle: Text(
-                    _customHeaders.isEmpty
-                        ? 'Optional headers for a reverse proxy or auth gateway'
-                        : '${_customHeaders.length} configured',
-                  ),
-                  children: [
-                    const SizedBox(height: 8),
-                    if (_hasLoadedConfig)
-                      CustomProxyHeadersEditor(
-                        initialHeaders: _customHeaders,
-                        onChanged: (headers) {
-                          setState(() => _customHeaders = headers);
-                        },
-                      )
-                    else
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Headers are sent by the app with API requests. External browser SSO pages may not receive them.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
                 ),
                 const SizedBox(height: 16),
 

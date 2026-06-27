@@ -2,7 +2,6 @@ class PropertiesController < ApplicationController
   include AccountableResource, StreamExtensions
 
   before_action :set_property, only: [ :balances, :address, :update_balances, :update_address ]
-  before_action :require_property_write_permission!, only: [ :update_balances, :update_address ]
 
   def new
     @account = Current.family.accounts.build(accountable: Property.new)
@@ -10,14 +9,8 @@ class PropertiesController < ApplicationController
 
   def create
     @account = Current.family.accounts.create!(
-      property_params.merge(
-        balance: 0,
-        status: "draft",
-        owner: Current.user,
-        currency: property_params[:currency].presence || Current.family.currency
-      )
+      property_params.merge(currency: Current.family.currency, balance: 0, status: "draft")
     )
-    @account.auto_share_with_family! if Current.family.share_all_by_default?
 
     redirect_to balances_property_path(@account)
   end
@@ -44,14 +37,9 @@ class PropertiesController < ApplicationController
   end
 
   def update_balances
-    result = nil
-    Account.transaction do
-      @account.update!(currency: balance_params[:currency]) if balance_params[:currency].present?
-      result = @account.set_current_balance(balance_params[:balance].to_d)
-      raise ActiveRecord::Rollback unless result.success?
-    end
+    result = @account.set_current_balance(balance_params[:balance].to_d)
 
-    if result&.success?
+    if result.success?
       @success_message = "Balance updated successfully."
 
       if @account.active?
@@ -60,7 +48,7 @@ class PropertiesController < ApplicationController
         redirect_to address_property_path(@account)
       end
     else
-      @error_message = result&.error_message
+      @error_message = result.error_message
       render :balances, status: :unprocessable_entity
     end
   end
@@ -103,7 +91,6 @@ class PropertiesController < ApplicationController
       params.require(:account)
             .permit(
               :name,
-              :currency,
               :accountable_type,
               :institution_name,
               :institution_domain,
@@ -113,11 +100,7 @@ class PropertiesController < ApplicationController
     end
 
     def set_property
-      @account = accessible_accounts.find(params[:id])
+      @account = Current.family.accounts.find(params[:id])
       @property = @account.property
-    end
-
-    def require_property_write_permission!
-      require_account_permission!(@account)
     end
 end

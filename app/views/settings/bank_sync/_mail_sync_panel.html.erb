@@ -1,0 +1,290 @@
+<%# locals: (mail_connection:, bank_formats:, bank_links:, mail_sync_configured:, mail_sync_issues:, mail_sync_imports:) %>
+
+
+
+<div class="space-y-4">
+
+  <% unless mail_sync_configured %>
+
+    <div class="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+
+      <p class="text-primary text-sm font-medium"><%= t("settings.bank_sync.not_configured") %></p>
+
+      <p class="text-secondary text-sm mt-1"><%= t("settings.bank_sync.not_configured_hint") %></p>
+
+    </div>
+
+  <% end %>
+
+
+
+  <% if mail_connection %>
+
+    <div class="p-4 rounded-lg bg-container-inset border border-primary">
+
+      <div class="flex items-start justify-between gap-4">
+
+        <div class="flex items-center gap-3 min-w-0">
+
+          <%= render DS::FilledIcon.new(icon: "mail", rounded: true, size: "lg") %>
+
+          <div class="min-w-0">
+
+            <p class="text-xs text-secondary uppercase tracking-wide"><%= t("settings.bank_sync.source_email") %></p>
+
+            <p class="text-primary font-semibold text-lg truncate"><%= mail_connection.gmail_email %></p>
+
+            <p class="text-secondary text-sm mt-1">
+
+              <% if mail_connection.last_synced_at %>
+
+                <%= t("settings.bank_sync.last_synced", time: time_ago_in_words(mail_connection.last_synced_at)) %>
+
+              <% else %>
+
+                <%= t("settings.bank_sync.never_synced") %>
+
+              <% end %>
+
+            </p>
+
+            <p class="text-secondary text-xs mt-1">
+
+              <% if mail_connection.gmail_watch_expires_at.present? && mail_connection.gmail_watch_expires_at > Time.current %>
+
+                <%= t("settings.bank_sync.watch_active", time: time_ago_in_words(mail_connection.gmail_watch_expires_at)) %>
+
+              <% else %>
+
+                <%= t("settings.bank_sync.watch_inactive") %>
+
+              <% end %>
+
+            </p>
+
+            <% unless mail_connection.gmail_watch_expires_at.present? && mail_connection.gmail_watch_expires_at > Time.current %>
+
+              <div class="mt-2">
+
+                <%= button_to t("settings.bank_sync.restart_watch"),
+
+                              restart_watch_settings_bank_sync_path,
+
+                              method: :post,
+
+                              class: "inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-container rounded border border-primary" %>
+
+              </div>
+
+            <% end %>
+
+          </div>
+
+        </div>
+
+
+
+        <%= button_to disconnect_settings_bank_sync_path,
+
+                      method: :delete,
+
+                      class: "inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-lg shrink-0",
+
+                      data: { turbo_confirm: t("settings.bank_sync.disconnect_confirm") } do %>
+
+          <%= icon "unlink", size: "sm" %>
+
+          <%= t("settings.bank_sync.disconnect") %>
+
+        <% end %>
+
+      </div>
+
+    </div>
+
+
+
+    <div class="space-y-3">
+
+      <div class="flex items-center justify-between gap-4">
+
+        <div>
+
+          <p class="text-primary font-medium"><%= t("settings.bank_sync.linked_banks") %></p>
+
+          <p class="text-secondary text-sm"><%= t("settings.bank_sync.linked_banks_hint") %></p>
+
+        </div>
+
+        <%= render DS::Link.new(
+
+          text: t("settings.bank_sync.add_bank"),
+
+          href: new_settings_bank_sync_link_path,
+
+          variant: "primary",
+
+          icon: "plus",
+
+          frame: "modal"
+
+        ) %>
+
+      </div>
+
+
+
+      <% if bank_links.any? %>
+
+        <div class="space-y-2">
+
+          <% bank_links.each do |link| %>
+
+            <%= render "bank_link_row", link: link %>
+
+          <% end %>
+
+        </div>
+
+      <% else %>
+
+        <div class="text-center py-8 rounded-lg border border-dashed border-primary">
+
+          <p class="text-secondary text-sm mb-3"><%= t("settings.bank_sync.no_banks_linked") %></p>
+
+          <%= render DS::Link.new(
+
+            text: t("settings.bank_sync.connect_first_bank"),
+
+            href: new_settings_bank_sync_link_path,
+
+            variant: "primary",
+
+            icon: "plus",
+
+            frame: "modal"
+
+          ) %>
+
+        </div>
+
+      <% end %>
+
+    </div>
+
+
+
+    <% if mail_sync_issues.any? %>
+
+      <div class="pt-2 space-y-2">
+
+        <p class="text-sm font-medium text-destructive"><%= t("settings.bank_sync.issues_log") %></p>
+
+        <div class="max-h-48 overflow-y-auto rounded-lg border border-destructive/30 bg-destructive/5 divide-y divide-destructive/20">
+
+          <% mail_sync_issues.each do |event| %>
+
+            <div class="px-3 py-2 text-xs">
+
+              <div class="flex items-center justify-between gap-2">
+
+                <span class="font-mono font-medium <%= event.level == "error" ? "text-destructive" : "text-amber-700 dark:text-amber-400" %>"><%= event.event %></span>
+
+                <span class="text-subdued shrink-0"><%= l(event.created_at, format: :short) %></span>
+
+              </div>
+
+              <% if event.message.present? %>
+
+                <p class="text-secondary mt-0.5"><%= event.message %></p>
+
+              <% end %>
+
+              <% if event.metadata.present? %>
+
+                <p class="text-subdued mt-0.5 font-mono truncate">
+
+                  <%= event.metadata.slice("from", "bank", "merchant", "message_id").compact.map { |k, v| "#{k}=#{v}" }.join(" · ") %>
+
+                </p>
+
+              <% end %>
+
+            </div>
+
+          <% end %>
+
+        </div>
+
+      </div>
+
+    <% end %>
+
+
+
+    <% if mail_sync_imports.any? %>
+
+      <div class="pt-2 space-y-2">
+
+        <p class="text-secondary text-sm font-medium"><%= t("settings.bank_sync.imports_log") %></p>
+
+        <div class="max-h-48 overflow-y-auto rounded-lg border border-primary bg-container-inset divide-y divide-primary">
+
+          <% mail_sync_imports.each do |event| %>
+
+            <div class="px-3 py-2 text-xs">
+
+              <div class="flex items-center justify-between gap-2">
+
+                <span class="font-mono text-primary"><%= event.event %></span>
+
+                <span class="text-subdued shrink-0"><%= l(event.created_at, format: :short) %></span>
+
+              </div>
+
+              <% if event.message.present? %>
+
+                <p class="text-secondary mt-0.5"><%= event.message %></p>
+
+              <% end %>
+
+            </div>
+
+          <% end %>
+
+        </div>
+
+      </div>
+
+    <% elsif mail_connection.gmail_watch_expires_at.present? && mail_connection.gmail_watch_expires_at > Time.current %>
+
+      <p class="text-secondary text-xs pt-2"><%= t("settings.bank_sync.no_imports_yet") %></p>
+
+    <% end %>
+
+  <% elsif mail_sync_configured %>
+
+    <p class="text-secondary text-sm"><%= t("settings.bank_sync.connect_hint") %></p>
+
+
+
+    <div class="flex justify-start">
+
+      <%= render DS::Link.new(
+
+        text: t("settings.bank_sync.connect_gmail"),
+
+        href: connect_settings_bank_sync_path,
+
+        variant: "primary",
+
+        icon: "mail"
+
+      ) %>
+
+    </div>
+
+  <% end %>
+
+</div>
+

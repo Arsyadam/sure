@@ -11,7 +11,7 @@ class RulesController < ApplicationController
     @sort_by = "name" unless allowed_columns.include?(@sort_by)
     @direction = "asc" unless [ "asc", "desc" ].include?(@direction)
 
-    @rules = Current.family.rules.includes(conditions: :sub_conditions).order(@sort_by => @direction)
+    @rules = Current.family.rules.order(@sort_by => @direction)
 
     # Fetch recent rule runs with pagination
     recent_runs_scope = RuleRun
@@ -86,8 +86,8 @@ class RulesController < ApplicationController
   def update
     if @rule.update(rule_params)
       respond_to do |format|
-        format.html { redirect_back_or_to rules_path, notice: t(".success") }
-        format.turbo_stream { stream_redirect_back_or_to rules_path, notice: t(".success") }
+        format.html { redirect_back_or_to rules_path, notice: "Rule updated" }
+        format.turbo_stream { stream_redirect_back_or_to rules_path, notice: "Rule updated" }
       end
     else
       render :edit, status: :unprocessable_entity
@@ -96,12 +96,12 @@ class RulesController < ApplicationController
 
   def destroy
     @rule.destroy
-    redirect_to rules_path, notice: t(".success")
+    redirect_to rules_path, notice: "Rule deleted"
   end
 
   def destroy_all
     Current.family.rules.destroy_all
-    redirect_to rules_path, notice: t(".success")
+    redirect_to rules_path, notice: "All rules deleted"
   end
 
   def confirm_all
@@ -126,11 +126,6 @@ class RulesController < ApplicationController
   def apply_all
     ApplyAllRulesJob.perform_later(Current.family)
     redirect_back_or_to rules_path, notice: t("rules.apply_all.success")
-  end
-
-  def clear_ai_cache
-    ClearAiCacheJob.perform_later(Current.family)
-    redirect_to rules_path, notice: t("rules.clear_ai_cache.success")
   end
 
   private

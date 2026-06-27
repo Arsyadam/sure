@@ -21,13 +21,12 @@ class MercuryItem < ApplicationRecord
   validates :token, presence: true, on: :create
 
   belongs_to :family
-  has_one_attached :logo, dependent: :purge_later
+  has_one_attached :logo
 
   has_many :mercury_accounts, dependent: :destroy
   has_many :accounts, through: :mercury_accounts
 
   scope :active, -> { where(scheduled_for_deletion: false) }
-  scope :syncable, -> { active }
   scope :ordered, -> { order(created_at: :desc) }
   scope :needs_update, -> { where(status: :requires_update) }
 
@@ -168,7 +167,7 @@ class MercuryItem < ApplicationRecord
   end
 
   def credentials_configured?
-    token.to_s.strip.present?
+    token.present?
   end
 
   def effective_base_url

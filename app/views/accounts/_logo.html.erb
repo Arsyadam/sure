@@ -7,16 +7,23 @@
   "full" => "w-full h-full"
 } %>
 
-<% if account.logo_url.present? %>
-  <%= image_tag account.logo_url,
-        class: "shrink-0 rounded-full #{size_classes[size]}",
-        loading: "lazy" %>
+<% institution_logo_url = account.resolved_institution_logo_url %>
+<% institution_favicon_url = account.institution_favicon_url %>
+<% size_class = size_classes[size] %>
+
+<% if institution_logo_url.present? %>
+  <span class="relative inline-flex shrink-0 <%= size_class %>">
+    <%= image_tag institution_logo_url,
+        class: "rounded-full #{size_class} object-contain bg-container",
+        onerror: institution_favicon_url.present? ? "if(this.src !== '#{j institution_favicon_url}') { this.src = '#{j institution_favicon_url}'; } else { this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden'); }" : "this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');" %>
+    <span class="hidden absolute inset-0">
+      <%= render DS::FilledIcon.new(variant: :text, hex_color: color || account.accountable.color, text: account.name, size: size, rounded: true) %>
+    </span>
+  </span>
+<% elsif account.logo_url.present? %>
+  <%= image_tag account.logo_url, class: "shrink-0 rounded-full #{size_class}", loading: "lazy" %>
+<% elsif account.logo.attached? %>
+  <%= image_tag account.logo, class: "shrink-0 rounded-full #{size_class}" %>
 <% else %>
-  <%= render DS::FilledIcon.new(
-        variant: :text,
-        hex_color: color || account.accountable&.color,
-        text: account.name,
-        size: size,
-        rounded: true
-      ) %>
+  <%= render DS::FilledIcon.new(variant: :text, hex_color: color || account.accountable.color, text: account.name, size: size, rounded: true) %>
 <% end %>

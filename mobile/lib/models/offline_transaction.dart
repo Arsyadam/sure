@@ -23,8 +23,6 @@ class OfflineTransaction extends Transaction {
     required super.currency,
     required super.nature,
     super.notes,
-    super.categoryId,
-    super.categoryName,
     this.syncStatus = SyncStatus.pending,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -46,8 +44,6 @@ class OfflineTransaction extends Transaction {
       currency: transaction.currency,
       nature: transaction.nature,
       notes: transaction.notes,
-      categoryId: transaction.categoryId,
-      categoryName: transaction.categoryName,
       syncStatus: syncStatus,
     );
   }
@@ -63,8 +59,6 @@ class OfflineTransaction extends Transaction {
       currency: map['currency'] as String,
       nature: map['nature'] as String,
       notes: map['notes'] as String?,
-      categoryId: map['category_id'] as String?,
-      categoryName: map['category_name'] as String?,
       syncStatus: _parseSyncStatus(map['sync_status'] as String),
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
@@ -82,8 +76,6 @@ class OfflineTransaction extends Transaction {
       'currency': currency,
       'nature': nature,
       'notes': notes,
-      'category_id': categoryId,
-      'category_name': categoryName,
       'sync_status': _syncStatusToString(syncStatus),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -100,8 +92,6 @@ class OfflineTransaction extends Transaction {
       currency: currency,
       nature: nature,
       notes: notes,
-      categoryId: categoryId,
-      categoryName: categoryName,
     );
   }
 
@@ -115,8 +105,6 @@ class OfflineTransaction extends Transaction {
     String? currency,
     String? nature,
     String? notes,
-    String? categoryId,
-    String? categoryName,
     SyncStatus? syncStatus,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -131,8 +119,6 @@ class OfflineTransaction extends Transaction {
       currency: currency ?? this.currency,
       nature: nature ?? this.nature,
       notes: notes ?? this.notes,
-      categoryId: categoryId ?? this.categoryId,
-      categoryName: categoryName ?? this.categoryName,
       syncStatus: syncStatus ?? this.syncStatus,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

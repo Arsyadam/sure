@@ -129,36 +129,6 @@ class SnaptradeAccountProcessorTest < ActiveSupport::TestCase
     assert_equal 0, @account.holdings.count
   end
 
-  test "processor trusts API total for multi-currency holdings" do
-    security = securities(:aapl)
-    Account.any_instance.stubs(:set_current_balance)
-
-    @snaptrade_account.update!(
-      currency: "CHF",
-      current_balance: BigDecimal("15000.00"),
-      cash_balance: BigDecimal("1000.00"),
-      raw_holdings_payload: [
-        {
-          "symbol" => {
-            "symbol" => { "symbol" => security.ticker, "description" => security.name }
-          },
-          "units" => "10",
-          "price" => "150.00",
-          "currency" => "USD",
-          "average_purchase_price" => "125.50"
-        }
-      ],
-      raw_activities_payload: []
-    )
-
-    SnaptradeAccount::Processor.new(@snaptrade_account).process
-
-    @account.reload
-    assert_equal BigDecimal("15000.00"), @account.balance
-    assert_equal BigDecimal("1000.00"), @account.cash_balance
-    assert_equal "CHF", @account.currency
-  end
-
   # === ActivitiesProcessor Tests ===
 
   test "activities processor maps BUY type to Buy label" do
@@ -240,7 +210,7 @@ class SnaptradeAccountProcessorTest < ActiveSupport::TestCase
     assert_equal "Dividend", tx_entry.entryable.investment_activity_label
   end
 
-  test "activities processor normalizes withdrawal as positive outflow amount" do
+  test "activities processor normalizes withdrawal as negative amount" do
     @snaptrade_account.update!(
       raw_activities_payload: [
         {
@@ -258,7 +228,7 @@ class SnaptradeAccountProcessorTest < ActiveSupport::TestCase
 
     assert_equal 1, result[:transactions]
     tx_entry = @account.entries.find_by(external_id: "activity_withdraw_1")
-    assert_equal 1000.00, tx_entry.amount.to_f
+    assert tx_entry.amount.negative?
   end
 
   test "activities processor skips activities without external_id" do

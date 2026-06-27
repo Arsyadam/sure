@@ -3,7 +3,6 @@ class RecurringTransactionsController < ApplicationController
 
   def index
     @recurring_transactions = Current.family.recurring_transactions
-                                    .accessible_by(Current.user)
                                     .includes(:merchant)
                                     .order(status: :asc, next_expected_date: :asc)
     @family = Current.family
@@ -43,7 +42,7 @@ class RecurringTransactionsController < ApplicationController
   end
 
   def toggle_status
-    @recurring_transaction = Current.family.recurring_transactions.accessible_by(Current.user).find(params[:id])
+    @recurring_transaction = Current.family.recurring_transactions.find(params[:id])
 
     if @recurring_transaction.active?
       @recurring_transaction.mark_inactive!
@@ -62,7 +61,7 @@ class RecurringTransactionsController < ApplicationController
   end
 
   def destroy
-    @recurring_transaction = Current.family.recurring_transactions.accessible_by(Current.user).find(params[:id])
+    @recurring_transaction = Current.family.recurring_transactions.find(params[:id])
     @recurring_transaction.destroy!
 
     flash[:notice] = t("recurring_transactions.deleted")

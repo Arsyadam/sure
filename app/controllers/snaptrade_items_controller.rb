@@ -1,6 +1,5 @@
 class SnaptradeItemsController < ApplicationController
   before_action :set_snaptrade_item, only: [ :show, :edit, :update, :destroy, :sync, :connect, :setup_accounts, :complete_account_setup, :connections, :delete_connection, :delete_orphaned_user ]
-  before_action :require_admin!, only: [ :new, :create, :preload_accounts, :select_accounts, :link_accounts, :select_existing_account, :link_existing_account, :edit, :update, :destroy, :sync, :connect, :callback, :setup_accounts, :complete_account_setup, :connections, :delete_connection, :delete_orphaned_user ]
 
   def index
     @snaptrade_items = Current.family.snaptrade_items.ordered
@@ -107,17 +106,27 @@ class SnaptradeItemsController < ApplicationController
 
   # Redirect user to SnapTrade connection portal
   def connect
-    @snaptrade_item.ensure_user_registered! unless @snaptrade_item.user_registered?
+    # Ensure user is registered first
+    unless @snaptrade_item.user_registered?
+      begin
+        @snaptrade_item.ensure_user_registered!
+      rescue => e
+        Rails.logger.error "SnapTrade registration error: #{e.class} - #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}"
+        redirect_to settings_providers_path, alert: t(".registration_failed", message: e.message)
+        return
+      end
+    end
 
+    # Get the connection portal URL - include item ID in callback for proper routing
     redirect_url = callback_snaptrade_items_url(item_id: @snaptrade_item.id)
-    portal_url = @snaptrade_item.connection_portal_url(redirect_url: redirect_url)
-    redirect_to portal_url, allow_other_host: true
-  rescue ActiveRecord::Encryption::Errors::Decryption => e
-    Rails.logger.error "SnapTrade decryption error for item #{@snaptrade_item.id}: #{e.class} - #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}"
-    redirect_to settings_providers_path, alert: t(".decryption_failed")
-  rescue => e
-    Rails.logger.error "SnapTrade connection error: #{e.class} - #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}"
-    redirect_to settings_providers_path, alert: t(".connection_failed", message: e.message)
+
+    begin
+      portal_url = @snaptrade_item.connection_portal_url(redirect_url: redirect_url)
+      redirect_to portal_url, allow_other_host: true
+    rescue => e
+      Rails.logger.error "SnapTrade connection portal error: #{e.class} - #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}"
+      redirect_to settings_providers_path, alert: t(".portal_error", message: e.message)
+    end
   end
 
   # Handle callback from SnapTrade after user connects brokerage
@@ -132,19 +141,12 @@ class SnaptradeItemsController < ApplicationController
     snaptrade_item = Current.family.snaptrade_items.find_by(id: params[:item_id])
 
     if snaptrade_item
+      # Trigger a sync to fetch the newly connected accounts
       snaptrade_item.sync_later unless snaptrade_item.syncing?
-
-      stored_return_to, stored_accountable_type = clear_snaptrade_resume_context
-      return_to = params[:return_to].presence || stored_return_to
-      accountable_type = params[:accountable_type].presence || stored_accountable_type
-
-      if return_to == "setup_accounts"
-        redirect_to setup_accounts_snaptrade_item_path(snaptrade_item, accountable_type: accountable_type.presence), notice: t(".success")
-      else
-        redirect_to accounts_path, notice: t(".success")
-      end
+      # Redirect to accounts page - user can click "accounts need setup" badge
+      # when sync completes. This avoids the auto-refresh loop issues.
+      redirect_to accounts_path, notice: t(".success")
     else
-      clear_snaptrade_resume_context
       redirect_to settings_providers_path, alert: t(".no_item")
     end
   end
@@ -157,22 +159,10 @@ class SnaptradeItemsController < ApplicationController
 
     no_accounts = @unlinked_accounts.blank? && @linked_accounts.blank?
 
-    # We trigger an initial or recovery sync if there are no accounts, we aren't currently syncing,
-    # and the last attempt didn't successfully complete. (If it completed and found 0 accounts, we stop here to avoid an infinite loop.)
-    latest_sync = @snaptrade_item.syncs.ordered.first
-    should_sync = latest_sync.nil? || !latest_sync.completed?
-
-    if no_accounts && !@snaptrade_item.syncing? && should_sync
+    # If no accounts and not syncing, trigger a sync
+    if no_accounts && !@snaptrade_item.syncing?
       @snaptrade_item.sync_later
     end
-
-    # Existing unlinked, visible investment/crypto accounts that could be linked instead of creating duplicates
-    @linkable_accounts = Current.family.accounts
-      .visible
-      .where(accountable_type: %w[Investment Crypto])
-      .left_joins(:account_providers)
-      .where(account_providers: { id: nil })
-      .order(:name)
 
     # Determine view state
     @syncing = @snaptrade_item.syncing?
@@ -228,9 +218,8 @@ class SnaptradeItemsController < ApplicationController
 
       if errors.any?
         # Partial success - some linked, some failed
-        redirect_to accounts_path,
-                    notice: t(".partial_success", count: linked_count, failed_count: errors.size,
-                              default: "Linked #{linked_count} account(s). #{errors.size} failed to link.")
+        redirect_to accounts_path, notice: t(".partial_success", linked: linked_count, failed: errors.size,
+                                              default: "Linked #{linked_count} account(s). #{errors.size} failed to link.")
       else
         redirect_to accounts_path, notice: t(".success", count: linked_count, default: "Successfully linked #{linked_count} account(s).")
       end
@@ -347,46 +336,35 @@ class SnaptradeItemsController < ApplicationController
   # Collection actions for account linking flow
 
   def preload_accounts
-    snaptrade_item = current_snaptrade_item
-    unless snaptrade_item
-      redirect_to settings_providers_path, alert: t(".not_configured", default: "SnapTrade is not configured.")
-      return
-    end
-
-    if snaptrade_item.user_registered?
+    snaptrade_item = Current.family.snaptrade_items.first
+    if snaptrade_item
       snaptrade_item.sync_later unless snaptrade_item.syncing?
       redirect_to setup_accounts_snaptrade_item_path(snaptrade_item)
     else
-      redirect_to connect_snaptrade_item_path(snaptrade_item)
+      redirect_to settings_providers_path, alert: t(".not_configured", default: "SnapTrade is not configured.")
     end
   end
 
   def select_accounts
     @accountable_type = params[:accountable_type]
     @return_to = params[:return_to]
-    snaptrade_item = current_snaptrade_item
+    snaptrade_item = Current.family.snaptrade_items.first
 
-    unless snaptrade_item
-      redirect_to settings_providers_path, alert: t(".not_configured", default: "SnapTrade is not configured.")
-      return
-    end
-
-    if snaptrade_item.user_registered?
+    if snaptrade_item
       redirect_to setup_accounts_snaptrade_item_path(snaptrade_item, accountable_type: @accountable_type, return_to: @return_to)
     else
-      store_snaptrade_resume_context(return_to: @return_to, accountable_type: @accountable_type)
-      redirect_to connect_snaptrade_item_path(snaptrade_item)
+      redirect_to settings_providers_path, alert: t(".not_configured", default: "SnapTrade is not configured.")
     end
   end
 
   def link_accounts
-    redirect_to settings_providers_path, alert: t(".use_setup_flow")
+    redirect_to settings_providers_path, alert: "Use the account setup flow instead"
   end
 
   def select_existing_account
     @account_id = params[:account_id]
     @account = Current.family.accounts.find_by(id: @account_id)
-    snaptrade_item = current_snaptrade_item
+    snaptrade_item = Current.family.snaptrade_items.first
 
     if snaptrade_item && @account
       @snaptrade_accounts = snaptrade_item.snaptrade_accounts
@@ -401,10 +379,9 @@ class SnaptradeItemsController < ApplicationController
   def link_existing_account
     account_id = params[:account_id]
     snaptrade_account_id = params[:snaptrade_account_id]
-    snaptrade_item_id = params[:snaptrade_item_id]
 
     account = Current.family.accounts.find_by(id: account_id)
-    snaptrade_item = Current.family.snaptrade_items.find_by(id: snaptrade_item_id)
+    snaptrade_item = Current.family.snaptrade_items.first
     snaptrade_account = snaptrade_item&.snaptrade_accounts&.find_by(id: snaptrade_account_id)
 
     if account && snaptrade_account
@@ -433,26 +410,6 @@ class SnaptradeItemsController < ApplicationController
 
     def set_snaptrade_item
       @snaptrade_item = Current.family.snaptrade_items.find(params[:id])
-    end
-
-    def current_snaptrade_item
-      active_items = Current.family.snaptrade_items.active
-
-      active_items.syncable.ordered.first ||
-        active_items.credentials_configured.ordered.first ||
-        active_items.ordered.first
-    end
-
-    def store_snaptrade_resume_context(return_to:, accountable_type:)
-      session[:snaptrade_resume] = {
-        return_to: return_to,
-        accountable_type: accountable_type
-      }
-    end
-
-    def clear_snaptrade_resume_context
-      resume = (session.delete(:snaptrade_resume) || {}).with_indifferent_access
-      [ resume[:return_to], resume[:accountable_type] ]
     end
 
     def snaptrade_item_params

@@ -22,15 +22,10 @@ module Api
       # @return [Array<Hash>] JSON array of merchant objects
       def index
         family = current_resource_owner.family
-        user = current_resource_owner
 
         # Single query with OR conditions - more efficient than Ruby deduplication
         family_merchant_ids = family.merchants.select(:id)
-        accessible_account_ids = family.accounts.accessible_by(user).select(:id)
-        provider_merchant_ids = Transaction.joins(:entry)
-          .where(entries: { account_id: accessible_account_ids })
-          .where.not(merchant_id: nil)
-          .select(:merchant_id)
+        provider_merchant_ids = family.transactions.select(:merchant_id)
 
         @merchants = Merchant
           .where(id: family_merchant_ids)
@@ -53,11 +48,10 @@ module Api
       # @return [Hash] JSON merchant object or error
       def show
         family = current_resource_owner.family
-        user = current_resource_owner
 
         @merchant = family.merchants.find_by(id: params[:id]) ||
                     Merchant.joins(transactions: :entry)
-                            .where(entries: { account_id: family.accounts.accessible_by(user).select(:id) })
+                            .where(entries: { account_id: family.accounts.select(:id) })
                             .distinct
                             .find_by(id: params[:id])
 

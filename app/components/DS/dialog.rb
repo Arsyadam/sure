@@ -1,13 +1,9 @@
 class DS::Dialog < DesignSystemComponent
-  renders_one :header, ->(title: nil, subtitle: nil, custom_header: false, **opts, &block) do
+  renders_one :header, ->(title: nil, subtitle: nil, hide_close_icon: false, **opts, &block) do
     content_tag(:header, class: "px-4 flex flex-col gap-2", **opts) do
       title_div = content_tag(:div, class: "flex items-center justify-between gap-2") do
-        # `id: title_id` lets the host `<dialog>` reference the title via
-        # `aria-labelledby` so AT users hear the title when focus lands
-        # in the dialog. `content_tag("h#{heading_level}", ...)` builds an
-        # h2/h3/etc based on the caller's `heading_level:`.
-        title = content_tag("h#{heading_level}", title, id: title_id, class: class_names("font-medium text-primary", drawer? ? "text-lg" : "")) if title
-        close_icon = close_button unless custom_header
+        title = content_tag(:h2, title, class: class_names("font-medium text-primary", drawer? ? "text-lg" : "")) if title
+        close_icon = render DS::Button.new(variant: "icon", class: "ml-auto", icon: "x", tabindex: "-1", data: { action: "DS--dialog#close" }) unless hide_close_icon
         safe_join([ title, close_icon ].compact)
       end
 
@@ -37,7 +33,7 @@ class DS::Dialog < DesignSystemComponent
     end
   end
 
-  attr_reader :variant, :auto_open, :reload_on_close, :width, :disable_frame, :content_class, :disable_click_outside, :opts, :responsive, :scrollable, :heading_level, :title_id
+  attr_reader :variant, :auto_open, :reload_on_close, :width, :disable_frame, :content_class, :disable_click_outside, :opts
 
   VARIANTS = %w[modal drawer].freeze
   WIDTHS = {
@@ -46,13 +42,8 @@ class DS::Dialog < DesignSystemComponent
     lg: "lg:max-w-[700px]",
     full: "lg:max-w-full"
   }.freeze
-  VALID_HEADING_LEVELS = (1..6).freeze
 
-  def initialize(variant: "modal", auto_open: true, reload_on_close: false, width: "md", frame: nil, disable_frame: false, content_class: nil, disable_click_outside: false, responsive: false, scrollable: true, heading_level: 2, **opts)
-    unless heading_level.is_a?(Integer) && VALID_HEADING_LEVELS.cover?(heading_level)
-      raise ArgumentError, "heading_level must be an Integer between 1 and 6, got: #{heading_level.inspect}"
-    end
-
+  def initialize(variant: "modal", auto_open: true, reload_on_close: false, width: "md", frame: nil, disable_frame: false, content_class: nil, disable_click_outside: false, **opts)
     @variant = variant.to_sym
     @auto_open = auto_open
     @reload_on_close = reload_on_close
@@ -61,10 +52,6 @@ class DS::Dialog < DesignSystemComponent
     @disable_frame = disable_frame
     @content_class = content_class
     @disable_click_outside = disable_click_outside
-    @responsive = responsive
-    @scrollable = scrollable
-    @heading_level = heading_level
-    @title_id = "dialog-title-#{SecureRandom.hex(4)}"
     @opts = opts
   end
 
@@ -82,9 +69,7 @@ class DS::Dialog < DesignSystemComponent
   end
 
   def dialog_outer_classes
-    variant_classes = if responsive?
-      "items-center justify-center lg:items-end lg:justify-end"
-    elsif drawer?
+    variant_classes = if drawer?
       "items-end justify-end"
     else
       "items-center justify-center"
@@ -97,9 +82,7 @@ class DS::Dialog < DesignSystemComponent
   end
 
   def dialog_inner_classes
-    variant_classes = if responsive?
-      "max-h-full lg:h-full lg:w-[550px]"
-    elsif drawer?
+    variant_classes = if drawer?
       "lg:w-[550px] h-full"
     else
       class_names(
@@ -109,7 +92,7 @@ class DS::Dialog < DesignSystemComponent
     end
 
     class_names(
-      "flex flex-col bg-container rounded-xl shadow-border-xs mx-3 lg:mx-0 w-full",
+      "flex flex-col bg-container rounded-xl shadow-border-xs mx-3 lg:mx-0 w-full overflow-hidden",
       variant_classes,
       content_class
     )
@@ -132,21 +115,5 @@ class DS::Dialog < DesignSystemComponent
 
   def drawer?
     variant == :drawer
-  end
-
-  def responsive?
-    @responsive
-  end
-
-  def close_button
-    classes = responsive? ? "ml-auto hidden lg:flex" : "ml-auto"
-    render DS::Button.new(
-      variant: "icon",
-      class: classes,
-      icon: "x",
-      title: I18n.t("ds.dialog.close"),
-      aria_label: I18n.t("ds.dialog.close"),
-      data: { action: "DS--dialog#close" }
-    )
   end
 end

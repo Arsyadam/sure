@@ -39,19 +39,8 @@ module Sure
       theme: [ "light", "dark" ] # available in view as params[:theme]
     }
 
-    # Enable Skylight instrumentation for ActiveJob (background workers)
-    config.skylight.probes << "active_job" if defined?(Skylight)
-
     # Enable Rack::Attack middleware for API rate limiting
     config.middleware.use Rack::Attack
-
-    config.x.ui = ActiveSupport::OrderedOptions.new
-    default_layout = ENV.fetch("DEFAULT_UI_LAYOUT", "dashboard")
-    config.x.ui.default_layout = default_layout.in?(%w[dashboard intro]) ? default_layout : "dashboard"
-
-    config.x.debug_log = ActiveSupport::OrderedOptions.new
-    retention_days = ENV.fetch("DEBUG_LOG_RETENTION_DAYS", "90").to_i
-    config.x.debug_log.retention_days = retention_days.positive? ? retention_days : 90
 
     # Handle OmniAuth/OIDC errors gracefully (must be before OmniAuth middleware)
     require_relative "../app/middleware/omniauth_error_handler"

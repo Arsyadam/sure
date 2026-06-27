@@ -1,8 +1,8 @@
-<%# locals: (transaction:, variant:, in_split_group: false) %>
+<%# locals: (transaction:, variant:) %>
 
-<div id="<%= dom_id(transaction, "category_menu_#{variant}") %>" class="min-w-0 overflow-hidden">
+<div id="<%= dom_id(transaction, "category_menu_#{variant}") %>">
   <% if transaction.transfer&.categorizable? || transaction.transfer.nil? %>
-    <%= render "categories/menu", transaction: transaction, in_split_group: in_split_group %>
+    <%= render "categories/menu", transaction: transaction %>
   <% else %>
     <div class="hidden lg:flex">
       <%= render "categories/badge", category: transaction.transfer&.payment? ? payment_category :  transfer_category %>

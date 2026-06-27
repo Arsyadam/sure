@@ -14,7 +14,6 @@ class PropertiesControllerTest < ActionDispatch::IntegrationTest
         account: {
           name: "New Property",
           subtype: "house",
-          currency: "EUR",
           institution_name: "Property Lender",
           institution_domain: "propertylender.example",
           notes: "Property notes",
@@ -32,7 +31,6 @@ class PropertiesControllerTest < ActionDispatch::IntegrationTest
     assert created_account.accountable.is_a?(Property)
     assert_equal "draft", created_account.status
     assert_equal 0, created_account.balance
-    assert_equal "EUR", created_account.currency
     assert_equal "Property Lender", created_account[:institution_name]
     assert_equal "propertylender.example", created_account[:institution_domain]
     assert_equal "Property notes", created_account[:notes]
@@ -95,12 +93,8 @@ class PropertiesControllerTest < ActionDispatch::IntegrationTest
       }
     }
 
-    @account.reload
-    assert_equal 600000, @account.balance
-    assert_equal "EUR", @account.currency
-
     # If account is active, it renders balances view; otherwise redirects to address
-    if @account.active?
+    if @account.reload.active?
       assert_response :success
     else
       assert_redirected_to address_property_path(@account)
