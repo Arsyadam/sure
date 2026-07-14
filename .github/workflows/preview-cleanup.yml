@@ -109,6 +109,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_INPUT: ${{ inputs.pr_number }}
         run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare credentials are not configured; skipping preview cleanup."
+            exit 0
+          fi
+
           # If specific PR number provided, only cleanup that one
           if [ -n "$PR_INPUT" ]; then
             if [[ "$PR_INPUT" =~ ^[1-9][0-9]*$ ]]; then
