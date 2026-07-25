@@ -139,6 +139,11 @@ jobs:
           # Get list of all preview workers
           echo "Fetching list of preview workers..."
 
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare secrets are not configured; skipping expired preview cleanup"
+            exit 0
+          fi
+
           # Use Cloudflare API to list workers and read modified_on from the list response.
           # The per-script endpoint returns raw script content, not JSON metadata.
           WORKERS_RESPONSE=$(curl -fsS -X GET \
